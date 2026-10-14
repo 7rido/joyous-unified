@@ -28,6 +28,8 @@ const DIST = join(HERE, 'dist')
 const SAMPLES = join(HERE, 'api-samples')
 const PORT = Number(process.argv[2] ?? 4400)
 const VERBOSE = process.env.UNIFIED_LOG === '1'
+/** Every endpoint asked for but never recorded, exposed at /__gaps for auditing. */
+const notRecorded = new Set()
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -93,6 +95,15 @@ const server = createServer(async (req, res) => {
   const pathname = decodeURIComponent(url.pathname)
   if (VERBOSE) console.log(`  <- ${req.method} ${pathname}`)
 
+  // --- audit surface -----------------------------------------------------
+  // Lets a sweep end with "zero unrecorded endpoints" as a checked fact rather than
+  // a claim, and names any that were hit.
+  if (pathname === '/__gaps') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ count: notRecorded.size, gaps: [...notRecorded].sort() }, null, 1))
+    return
+  }
+
   // --- API ---------------------------------------------------------------
   if (pathname.startsWith('/api/')) {
     // --- Auth is synthesised, not recorded -------------------------------
@@ -123,6 +134,19 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // --- method-aware, where the method was actually observed -------------
+    // /api/community-handoff issues a single-sign-on code, so it POSTs. Returning
+    // its payload for a GET would invent a response the real API never gives, and
+    // hide a client bug that got the verb wrong. Only the observed verb is answered.
+    const POST_ONLY = new Set(['/api/community-handoff'])
+    if (POST_ONLY.has(pathname) && req.method !== 'POST') {
+      res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({
+        message: `Route ${req.method}:${pathname} not found`, error: 'Not Found', statusCode: 404,
+      }))
+      return
+    }
+
     const file = sampleFileFor(pathname)
     if (file && existsSync(file)) {
       const body = await readFile(file)
@@ -130,8 +154,15 @@ const server = createServer(async (req, res) => {
       res.end(body)
       return
     }
-    // Unrecorded: answer an empty object and say so, so gaps stay visible.
-    console.log(`  [api] not recorded: ${pathname} -> {}`)
+
+    // --- unrecorded ------------------------------------------------------
+    // Returns {} with a 200, which is deliberately noisy in the log because the
+    // failure mode is invisible otherwise: the client destructures a field off the
+    // empty object, throws, and renders a blank page that still looks like it
+    // loaded. That is exactly how the empty product detail pages hid.
+    console.warn(`  [api] NOT RECORDED: ${req.method} ${pathname} -> {}`)
+    console.warn('        an empty body here makes the client throw and render a blank page')
+    notRecorded.add(`${req.method} ${pathname}`)
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end('{}')
     return
