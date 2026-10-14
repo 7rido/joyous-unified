@@ -1,4 +1,11 @@
 {
+ "amendments": [
+  {
+   "at": "2026-10-14T21:26:00+00:00",
+   "what": "38 avatar images added",
+   "why": "Referenced from a hardcoded string array INSIDE the bundle (39-joyo-zen etc. mapped to /avatars/<n>.webp), not from the HTML \u2014 so the original shell crawl could not see them. Their 404s made the avatar picker throw during render."
+  }
+ ],
  "capturedAt": "2026-10-14T20:55:19+00:00",
  "files": {
   "apple-touch-icon.png": {
@@ -101,6 +108,158 @@
    "bytes": 563,
    "sha256": "d948b5a338c83e1ceb99295718b278dacb886ef16d686c7d896ef93df078488b"
   },
+  "avatars/01-joyo-wave.webp": {
+   "bytes": 30442,
+   "sha256": "fd3c64bfe7db2f0e0058e94ce9f45a7fc531cae2db331a11e1d559429c113821"
+  },
+  "avatars/02-joyo-cool.webp": {
+   "bytes": 35332,
+   "sha256": "ae80bd3ff3b43282a0a782a1f8ecd831c737868102c5926b30191184c5d8cd32"
+  },
+  "avatars/03-joyo-lab.webp": {
+   "bytes": 32082,
+   "sha256": "41c237e66611060bf64c5d859e93cd61ad5daba97516c8f959ebdebf02e6a9ea"
+  },
+  "avatars/04-joyo-gym.webp": {
+   "bytes": 30022,
+   "sha256": "f5fcfd31507e57ed876ad4aab047d68ac87c934ebe258e9200e22946f67f99aa"
+  },
+  "avatars/05-joyo-sleepy.webp": {
+   "bytes": 33810,
+   "sha256": "df6d38a79372f87f87b94141f74a5b57963f809a28e02ca3decafb6eb76cc39d"
+  },
+  "avatars/06-joyo-party.webp": {
+   "bytes": 33778,
+   "sha256": "18c23e740c734d12f1179d4574220e7fa84c71edbc07bc07db393fdfc34638c4"
+  },
+  "avatars/07-joyo-music.webp": {
+   "bytes": 38596,
+   "sha256": "0f86adee5c9e4ee277b4af2a9807a65580b394bf884141a7851fee19c0d08f49"
+  },
+  "avatars/08-joyo-space.webp": {
+   "bytes": 35146,
+   "sha256": "c371b81c2c5ed10f86cf64dfb3eb59a30830c1ac7dd65965ceb39542b53f4fc7"
+  },
+  "avatars/09-joyo-love.webp": {
+   "bytes": 29326,
+   "sha256": "51426b7dbb763237e4650df101f98caa70a934916d90c0602fc7abfcf3a6d4ee"
+  },
+  "avatars/10-corgi.webp": {
+   "bytes": 29940,
+   "sha256": "955704e8d3d612e0de82f1f675a51b397b4bca99e5529548f6590c13e000eee3"
+  },
+  "avatars/11-cat.webp": {
+   "bytes": 29720,
+   "sha256": "eca4590e9f56324add2ecfa54ec0647059d2de6785f82e7875f28644e1fd3861"
+  },
+  "avatars/13-sloth.webp": {
+   "bytes": 38330,
+   "sha256": "35e71f4765f3aacae010859c9444440ca55465bc719d81c2515886b524d208a0"
+  },
+  "avatars/14-red-panda.webp": {
+   "bytes": 39040,
+   "sha256": "5bf719dd8bc41a6dd0f204e45e9fb0d1f7ba8f91787b23a3b0020a521cc2dd26"
+  },
+  "avatars/15-capsule.webp": {
+   "bytes": 35234,
+   "sha256": "fde604a457507c3e3677ace722d49232844742f888f74a09b16185cda8484f4a"
+  },
+  "avatars/16-frog-king.webp": {
+   "bytes": 34082,
+   "sha256": "474a0be144a37b1fd79ffa2e727b4be5b84f3381d7896d042df4937dd5bda8f1"
+  },
+  "avatars/17-joyo-chef.webp": {
+   "bytes": 28850,
+   "sha256": "fd7e36ed4042d5c90603f25e2d2de1a1c57ba7f7d0c3549f691fb3dab8de9919"
+  },
+  "avatars/18-joyo-pirate.webp": {
+   "bytes": 35492,
+   "sha256": "46619aa16ce5f46c08f9e7b09b7771796cbde1fcc847b6ef9085738e1c6ffcc1"
+  },
+  "avatars/19-joyo-detective.webp": {
+   "bytes": 31682,
+   "sha256": "2f4888efc584974e900e8664e0a07b53aee8e6e7ae1b36264e4af4242c85cfc3"
+  },
+  "avatars/20-joyo-rockstar.webp": {
+   "bytes": 29540,
+   "sha256": "b1cf648353de4886831b089fe2da9cf3e932e89a0168eb742a1a749253d81ebb"
+  },
+  "avatars/21-joyo-couch.webp": {
+   "bytes": 41264,
+   "sha256": "d21d5df9a3aaa5218d0b64bf4b4e58832df4d9966eaeac032cae4395e6b552a0"
+  },
+  "avatars/22-joyo-office.webp": {
+   "bytes": 25226,
+   "sha256": "ad6a09ab6436f9c9ff8ffba559a2f6216c4a85eb3fb0823904c249784528ec8e"
+  },
+  "avatars/23-joyo-suit.webp": {
+   "bytes": 37502,
+   "sha256": "650ecc8eb3bed7e8e9ad6ec7b95af184eead0558a510c9fd2f375b757274b991"
+  },
+  "avatars/24-joyo-lab-coat-friends.webp": {
+   "bytes": 28990,
+   "sha256": "2abf956c2cd1ff95764ea6ae60b0012f36c192ab8bf231d7d4878377e6754dd1"
+  },
+  "avatars/25-joyo-surf.webp": {
+   "bytes": 46276,
+   "sha256": "0d544348ebfddf8266a08a551f3745896138e992dc23e5fd3cdab9d33a7ed4e5"
+  },
+  "avatars/26-joyo-snow.webp": {
+   "bytes": 32124,
+   "sha256": "2e9d6ac8bdd25f6e1cec59bce15be91a57dafe1eef94f7cfa44724eefcf497c3"
+  },
+  "avatars/27-joyo-gamer.webp": {
+   "bytes": 37082,
+   "sha256": "bda701e0f5b9814e4c10bc520e7e25ec4ad5b60dc6e5a19eae56edc1533211a0"
+  },
+  "avatars/28-joyo-bookworm.webp": {
+   "bytes": 37194,
+   "sha256": "60750fc3db3e7250764043c6b40db3f6cc296cb3b34f23e1451cb82bdd8a8385"
+  },
+  "avatars/29-joyo-gardener.webp": {
+   "bytes": 41176,
+   "sha256": "5bf48741d43235bb8515513945443045de50b727fef3a7fbcaf3add841c8b0c3"
+  },
+  "avatars/30-joyo-hero.webp": {
+   "bytes": 36762,
+   "sha256": "bf564785db83198b141f6838ee7d08622663889c5c937b43b4038159738c289b"
+  },
+  "avatars/31-joyo-wizard.webp": {
+   "bytes": 30610,
+   "sha256": "4be148d048c8d2d8ad1c96836bbc71246966f947807808aa62ab7086644bf666"
+  },
+  "avatars/32-joyo-camp.webp": {
+   "bytes": 32386,
+   "sha256": "d06dad226bebcb1def6a350422cedb0eca2bfda0f86b2d5d2c26e9a4844baf09"
+  },
+  "avatars/33-joyo-painter.webp": {
+   "bytes": 25422,
+   "sha256": "319c426887d6cedc9e85daca88c73c24ed57a859096234a2afb49015aad8a753"
+  },
+  "avatars/34-joyo-boxer.webp": {
+   "bytes": 36434,
+   "sha256": "68beadbf4c508761de97f7d9f20cf236747752a0f7c6c9f4f6fa2d5c9ff000cc"
+  },
+  "avatars/35-joyo-cowboy.webp": {
+   "bytes": 39180,
+   "sha256": "ac84fcf859e4ef4a6e1a619e76b8bff38b76c368531be45ac9864a30cefa380f"
+  },
+  "avatars/36-joyo-beach.webp": {
+   "bytes": 41340,
+   "sha256": "e6f17dc916eba8027bd8a89cfbc214806a3a074dd940c7095c5b0c4320722f65"
+  },
+  "avatars/37-joyo-karaoke.webp": {
+   "bytes": 35098,
+   "sha256": "ebc9c88dc846c3e0a2ed4d5c31118e588d37697734c5cdd8167dc3aee2e2445b"
+  },
+  "avatars/38-joyo-skate.webp": {
+   "bytes": 34234,
+   "sha256": "164afdbe4e8b819f7879ef3fd109401b218e9b91f30b1b668c14d0b021758f6b"
+  },
+  "avatars/39-joyo-zen.webp": {
+   "bytes": 34144,
+   "sha256": "81ab7c8459733aaf9a6557201cc878e71c48e40f4997c382670b7bf6d9feef1c"
+  },
   "favicon-16.png": {
    "bytes": 781,
    "sha256": "28d88fd2bfb0f3585e1d71575b48572ea7c4554606551cbc4d5c7cc589338ce2"
@@ -116,6 +275,7 @@
  },
  "method": "plain read-only GETs of the shell and every asset it references, crawled transitively via import() and url() references until none were missing",
  "note": "Capture only: no request was made that changes state. The bundle is the site's own compiled client, served verbatim \u2014 not a reimplementation.",
+ "notes": {},
  "servedUnder": "/community/ on the community.* host (see server.mjs)",
  "sharedWithMemberApp": {
   "assets/index-CI8edidq.js": "vendor chunk, byte-shared with dist/assets/",
@@ -123,7 +283,7 @@
  },
  "source": "https://community.joyous.is",
  "totals": {
-  "bytes": 1415432,
-  "files": 28
+  "bytes": 2718320,
+  "files": 66
  }
 }

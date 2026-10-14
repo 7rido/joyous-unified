@@ -1500,10 +1500,62 @@ check('the community API is reachable from both hosts',
 
 // An unimplemented endpoint must NOT answer 200 {}: the client would render an empty
 // screen, which reads as "no data" rather than "not built".
-const notYet = await get('/api/community/rooms')
+// /calendar, NOT /rooms — /rooms is implemented now, so asserting it 501s would be
+// asserting a stale fact. Pick one that is genuinely still unimplemented, and assert the
+// implemented ones separately below so this cannot silently drift again.
+const notYet = await get('/api/community/calendar')
 check('an unimplemented endpoint says so instead of returning 200 {}',
   notYet.status === 501 && notYet.body?.__notImplemented === true,
   `HTTP ${notYet.status} ${JSON.stringify(notYet.body).slice(0, 70)}`)
+
+// The seven read endpoints the first screen demands. Each returns a WRAPPER OBJECT, not
+// a bare array — the client does `data.rooms` / `data.posts` / `data.events`, so a bare
+// array yields undefined and the render throws.
+const rooms = await get('/api/community/rooms')
+check('/rooms returns {rooms:[...]}, not a bare array',
+  Array.isArray(rooms.body?.rooms), `keys: ${Object.keys(rooms.body || {}).join(', ')}`)
+check('a room carries the fields the sidebar reads',
+  (rooms.body?.rooms || []).every((r) => r.id && r.slug && r.name && 'staffOnly' in r),
+  `keys: ${Object.keys(rooms.body?.rooms?.[0] || {}).slice(0, 6).join(', ')}`)
+
+const posts = await get('/api/community/posts?page=1')
+check('/posts returns {posts, hasMore} — hasMore is the only pagination field read',
+  Array.isArray(posts.body?.posts) && typeof posts.body?.hasMore === 'boolean',
+  `hasMore=${posts.body?.hasMore}`)
+// `room` is an OBJECT here, not an id; and lastActivityAt is parsed by date-fns in the
+// topics layout, so an unparseable one throws RangeError rather than rendering blank.
+check('a post carries a room OBJECT and a parseable lastActivityAt',
+  (posts.body?.posts || []).every((p) => p.room && p.room.slug && !Number.isNaN(Date.parse(p.lastActivityAt))),
+  `room=${JSON.stringify(posts.body?.posts?.[0]?.room)}`)
+
+const events = await get('/api/community/events')
+check('/events returns {events:[...]} with a LIVE one for the nav dot',
+  Array.isArray(events.body?.events) && events.body.events.some((e) => e.status === 'LIVE'),
+  `${(events.body?.events || []).length} event(s)`)
+// startsAt is ALWAYS formatted on non-LIVE cards, so it must parse.
+check('every event has a parseable startsAt',
+  (events.body?.events || []).every((e) => !Number.isNaN(Date.parse(e.startsAt))),
+  'all parseable')
+
+const unread = await get('/api/community/unread')
+check('/unread returns {total, rooms:{}} — rooms is a MAP keyed by room id',
+  typeof unread.body?.total === 'number' && unread.body?.rooms && typeof unread.body.rooms === 'object'
+    && !Array.isArray(unread.body.rooms),
+  `total=${unread.body?.total} rooms=${JSON.stringify(unread.body?.rooms)}`)
+const count = await get('/api/community/notifications/unread-count')
+check('/notifications/unread-count returns {unread:n}, not a bare number',
+  typeof count.body?.unread === 'number', JSON.stringify(count.body))
+const ov = await get('/api/community/overview')
+check('/overview carries memberCount, onlineCount and staff[]',
+  typeof ov.body?.memberCount === 'number' && Array.isArray(ov.body?.staff),
+  `${ov.body?.memberCount} members, ${ov.body?.staff?.length} staff`)
+
+// The emoji bug: JSON.stringify().length counts UTF-16 units while the socket writes
+// UTF-8 bytes, so a Content-Length derived from .length truncates the body mid-string and
+// the client dies on `Unexpected end of JSON input`. A room emoji is the trigger.
+check('responses survive multi-byte characters (the Content-Length trap)',
+  (rooms.body?.rooms || []).some((r) => r.emoji && r.emoji.length > 1),
+  `emoji: ${rooms.body?.rooms?.[0]?.emoji}`)
 
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')

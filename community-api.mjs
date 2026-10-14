@@ -33,32 +33,19 @@
  * form is real, the check behind it is not, and `__fixture` marks it.
  */
 
+import { FIXTURE_MEMBER, ALLOWED_EMAILS } from './community-fixtures.mjs'
+import {
+  ROOMS, POSTS, MEMBERS, EVENTS, NOTIFICATIONS, COMMENTS,
+  overview, unreadState, unreadCount,
+} from './community-seed.mjs'
+
 const SESSION_COOKIE = 'joyous_community_sid'
 const SESSIONS = new Map()
 let seq = 0
 
-/** The seeded member. Role ADMIN so the moderation surfaces are reachable. */
-export const FIXTURE_MEMBER = {
-  id: 'comm-member-1',
-  displayName: 'Ada',
-  name: 'Ada Lovelace',
-  username: 'ada',
-  email: 'ada.lovelace@example.com',
-  avatarUrl: null,
-  role: 'ADMIN',
-  tier: 'ELITE',
-  // Without this the client's `canPost` gate is false and the forum renders read-only.
-  emailVerified: true,
-  mutedUntil: null,
-  bio: 'Seeded community member for the local replay.',
-  joinedAt: '2026-01-08T14:20:00.000Z',
-  postCount: 0,
-  commentCount: 0,
-  __fixture: true,
-}
-
-/** Addresses that may sign in. Passwords are NOT checked — see the header. */
-const ALLOWED = new Set([FIXTURE_MEMBER.email, 'ada@example.com'])
+/** Re-exported so callers have one place to look; defined in community-fixtures.mjs. */
+export { FIXTURE_MEMBER }
+const ALLOWED = ALLOWED_EMAILS
 
 const readBody = (req) =>
   new Promise((resolve) => {
@@ -93,14 +80,26 @@ function startSession(res, member) {
   return sid
 }
 
+/**
+ * Send JSON.
+ *
+ * NO Content-Length, deliberately. `JSON.stringify(...).length` counts UTF-16 code
+ * units, but `res.end()` writes UTF-8 bytes — and a single emoji is 2 units and 4 bytes.
+ * Setting the header from `.length` therefore UNDERSTATES the body, and Node truncates
+ * the response at that byte count, cutting the JSON mid-string:
+ *
+ *   {"rooms":[{"name":"General","emoji":"💬",...   <- cut here, no closing braces
+ *
+ * The client sees `Unexpected end of JSON input` and the whole app falls to its error
+ * boundary. Omitting the header lets Node compute the byte length itself, which is what
+ * the server's own sendJson does.
+ */
 const json = (res, code, body) => {
-  const payload = JSON.stringify(body)
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': String(payload.length),
     'Cache-Control': 'no-store',
   })
-  res.end(payload)
+  res.end(JSON.stringify(body))
 }
 
 /**
@@ -172,6 +171,78 @@ export async function handleCommunityApi(req, res, pathname) {
     startSession(res, FIXTURE_MEMBER)
     console.log('  [community] SSO handoff accepted (fixture)')
     json(res, 200, { member: FIXTURE_MEMBER })
+    return true
+  }
+
+  // --- the read surface --------------------------------------------------
+  // Shapes read off the bundle. Note ALL of these are wrapper objects, not bare arrays:
+  // the client does `data.rooms`, `data.posts`, `data.events`, so a bare array would
+  // give it `undefined` and render an empty screen indistinguishable from "no data".
+  const page = Number(new URL(req.url ?? '/', 'http://x').searchParams.get('page') ?? 1) || 1
+
+  if (route === '/rooms' && req.method === 'GET') {
+    json(res, 200, { rooms: ROOMS, __fixture: true })
+    return true
+  }
+  if (route === '/overview' && req.method === 'GET') {
+    json(res, 200, overview())
+    return true
+  }
+  if (route === '/unread' && req.method === 'GET') {
+    json(res, 200, unreadState())
+    return true
+  }
+  if (route === '/notifications/unread-count' && req.method === 'GET') {
+    json(res, 200, { unread: unreadCount() })
+    return true
+  }
+  if (route === '/events' && req.method === 'GET') {
+    json(res, 200, { events: EVENTS, __fixture: true })
+    return true
+  }
+  if (route === '/members' && req.method === 'GET') {
+    json(res, 200, { members: MEMBERS, total: MEMBERS.length, __fixture: true })
+    return true
+  }
+  if (route === '/notifications' && req.method === 'GET') {
+    json(res, 200, { notifications: NOTIFICATIONS, total: NOTIFICATIONS.length, __fixture: true })
+    return true
+  }
+
+  // Paginated: the client reads `posts` AND `hasMore`, and on page>1 appends rather than
+  // replacing. hasMore must be a real boolean or the "load more" control never settles.
+  if (route === '/posts' && req.method === 'GET') {
+    // `room` is the room SLUG, not its id — the client passes the route's :slug straight
+    // through. Filtering on id silently returned nothing for every room page.
+    const slug = new URL(req.url ?? '/', 'http://x').searchParams.get('room')
+    const scoped = slug ? POSTS.filter((post) => post.room?.slug === slug) : POSTS
+    const PER = 2
+    const start = (page - 1) * PER
+    const slice = scoped.slice(start, start + PER)
+    // `hasMore` and nothing else: the client reads only that for pagination — it keeps
+    // its own page counter and never looks at a total.
+    json(res, 200, { posts: slice, hasMore: start + PER < scoped.length, __fixture: true })
+    return true
+  }
+
+  // `{ participants: { [postId]: [member] } }` — merged into a map by the client.
+  if (route === '/posts/participants' && req.method === 'GET') {
+    const ids = String(new URL(req.url ?? '/', 'http://x').searchParams.get('ids') ?? '')
+      .split(',').map((x) => x.trim()).filter(Boolean)
+    const participants = {}
+    for (const id of ids) {
+      const post = POSTS.find((x) => x.id === id)
+      if (post) participants[id] = [post.author].filter(Boolean)
+    }
+    json(res, 200, { participants })
+    return true
+  }
+
+  const postMatch = new RegExp('^/posts/([^/]+)$').exec(route)
+  if (postMatch && req.method === 'GET') {
+    const post = POSTS.find((x) => x.id === decodeURIComponent(postMatch[1]))
+    if (!post) { json(res, 404, { error: 'That post no longer exists.' }); return true }
+    json(res, 200, { post, comments: COMMENTS[post.id] ?? [], __fixture: true })
     return true
   }
 

@@ -861,6 +861,11 @@ const server = createServer({
       // copies — so they are served from there rather than duplicated into community/.
       // Without this fallback they 404 and the CSS background silently disappears.
       if (file === null && rel.startsWith('world/')) file = resolveFile(DIST, rel)
+      // The avatar picker maps a hardcoded list of 38 names into `/avatars/<n>.webp`.
+      // Those were not part of the original shell capture — they are referenced from a
+      // string array inside the bundle, not from the HTML — so the whole picker 404'd and
+      // its `.map` threw during render, taking the page to the error boundary.
+      if (file === null && rel.startsWith('avatars/')) file = resolveFile(COMMUNITY_DIR, rel)
       if (file === null) {
         // A missing ASSET is a real 404 — never the SPA shell, which would make the
         // client parse HTML as JavaScript and fail with a confusing syntax error.
