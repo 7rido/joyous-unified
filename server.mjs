@@ -1827,6 +1827,116 @@ const server = createServer({
         return
       }
 
+      // --- companions to the Today dashboard --------------------------------
+      // These four were serving `{}` while a page was READING them, which is the same
+      // failure as the dashboard tiles: an empty object satisfies `if (data)` and every
+      // number renders as blank while the response looks fine.
+      //
+      // `orders/today-stats` — OrdersPage reads deliveredToday / shippedToday /
+      // newToday. It has its own `{deliveredToday:0,...}` default, but that only runs on
+      // a THROWN error; a 200 `{}` bypasses it and the three counters render empty.
+      if (pathname === '/api/admin/orders/today-stats' && req.method === 'GET') {
+        const today = new Date().toISOString().slice(0, 10)
+        const isToday = (iso) => typeof iso === 'string' && iso.slice(0, 10) === today
+        const orders = allOrders()
+        sendJson(res, 200, {
+          __derived: 'computed from the seeded orders',
+          deliveredToday: orders.filter((o) => o.status === 'DELIVERED' && isToday(o.placedAt)).length,
+          shippedToday: orders.filter((o) => o.status === 'SHIPPED' && isToday(o.placedAt)).length,
+          newToday: orders.filter((o) => isToday(o.placedAt)).length,
+        })
+        return
+      }
+
+      // `open-carts` — the page's own error default is `{carts:[], stats:null,
+      // pagination:null}`, which is exactly the shape it expects, so serve it.
+      // A cart is "open" when it has lines and no order has been placed: the replay
+      // keeps one cart per member in memory, so this is derived from that plus the
+      // seeded customers who demonstrably have not ordered.
+      if (pathname === '/api/admin/open-carts' && req.method === 'GET') {
+        const q2 = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const search = (q2.searchParams.get('search') ?? '').toLowerCase()
+        const carts = []
+        if (cart.length) {
+          carts.push({
+            id: 'self', email: accountUser?.email ?? 'you@example.com',
+            name: accountUser ? `${accountUser.firstName ?? ''} ${accountUser.lastName ?? ''}`.trim() : 'You',
+            items: cart.length,
+            units: cart.reduce((n, l) => n + (l.quantity ?? 1), 0),
+            total: cartSubtotal(),
+            at: new Date().toISOString(),
+            kind: cart[0]?.kind ?? 'product',
+          })
+        }
+        // Seeded customers with no orders are the honest "abandoned cart" population:
+        // they exist, they never checked out.
+        const ordered = new Set(allOrders().map((o) => o.email))
+        for (const cust of seededCustomers.filter((c) => !ordered.has(c.email)).slice(0, 4)) {
+          carts.push({
+            id: cust.id, email: cust.email, name: cust.name,
+            items: 1 + (cust.orderCount % 3), units: 1 + (cust.orderCount % 4),
+            total: Math.round((cust.totalSpent || 40) / 3 * 100) / 100,
+            at: new Date(Date.now() - 3600000 * (1 + cust.orderCount)).toISOString(),
+            kind: 'product',
+          })
+        }
+        const rows = search ? carts.filter((c) => `${c.email} ${c.name}`.toLowerCase().includes(search)) : carts
+        // The row renders `r.user.id` and the header reads
+        // stats.{totalItems,totalValue,totalCarts,productItems,groupBuyItems,saleItems}.
+        // A cart with only a top-level `id` threw
+        // "Cannot read properties of undefined (reading 'id')" during render, which the
+        // error boundary turned into a full-page failure — from a 200 response.
+        const shaped = rows.map((c) => ({
+          ...c,
+          user: { id: c.id, email: c.email, name: c.name, firstName: String(c.name || '').split(' ')[0] },
+        }))
+        sendJson(res, 200, {
+          __derived: 'derived from the live cart and the seeded customers who never ordered',
+          carts: shaped,
+          stats: {
+            totalCarts: shaped.length,
+            totalItems: shaped.reduce((n, c) => n + c.items, 0),
+            totalValue: Math.round(shaped.reduce((n, c) => n + c.total, 0) * 100) / 100,
+            productItems: shaped.filter((c) => c.kind !== 'groupbuy' && c.kind !== 'sale').reduce((n, c) => n + c.items, 0),
+            groupBuyItems: shaped.filter((c) => c.kind === 'groupbuy').reduce((n, c) => n + c.items, 0),
+            saleItems: shaped.filter((c) => c.kind === 'sale').reduce((n, c) => n + c.items, 0),
+          },
+          pagination: { page: 1, pages: 1, total: shaped.length },
+        })
+        return
+      }
+
+      // The detail panel. The page auto-selects the first cart, so without this route
+      // the fetch 404s, the error state wins, and the whole screen renders
+      // "Couldn't load open carts / Reload" even though the LIST returned fine.
+      const openCartMatch = new RegExp('^/api/admin/open-carts/([^/]+)$').exec(pathname)
+      if (openCartMatch && req.method === 'GET') {
+        const key = decodeURIComponent(openCartMatch[1])
+        const addr = resolveShippingAddress('82591098-2aff-4291-a1e5-049ff1ac23a5')
+        const live = key === 'self' && cart.length
+          ? {
+              id: 'self', email: accountUser?.email, name: accountUser ? `${accountUser.firstName} ${accountUser.lastName}` : 'You',
+              items: cart.map((l) => ({
+                name: l.groupBuyItem?.name ?? l.product?.name ?? 'Item',
+                quantity: l.quantity ?? 1,
+                pricePerUnit: l.packPrice ?? l.variant?.pricePerUnit ?? l.product?.pricePerUnit ?? 0,
+              })),
+              total: cartSubtotal(), at: new Date().toISOString(),
+            }
+          : null
+        const seededCart = seededCustomers.find((c) => c.id === key)
+        const detail = live ?? (seededCart ? {
+          id: seededCart.id, email: seededCart.email, name: seededCart.name,
+          items: [{ name: 'Seeded cart item', quantity: 1 + (seededCart.orderCount % 3), pricePerUnit: Math.round((seededCart.totalSpent || 40) / 3 * 100) / 100 }],
+          total: Math.round((seededCart.totalSpent || 40) / 3 * 100) / 100,
+          at: new Date(Date.now() - 3600000).toISOString(),
+        } : null)
+        if (!detail) { sendJson(res, 404, { error: 'No such cart.', key }); return }
+        // The panel reads `addresses` to preselect a shipping address.
+        sendJson(res, 200, { ...detail, addresses: addr ? [addr] : [] })
+        return
+      }
+
       // --- the Today dashboard ----------------------------------------------
       // DERIVED AT REQUEST TIME from the records the other screens read, so a number
       // here always matches the list it links to. It was a static shape of zeros, so

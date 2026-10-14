@@ -48,7 +48,7 @@ export function seedCustomers() {
     approved: c.approved,
     emailVerified: true,
     isAdmin: false,
-    createdAt: new Date(Date.UTC(2026, 0, 8 + i * 3, 14, 20)).toISOString(),
+    createdAt: new Date(Date.now() - (200 - i * 12) * 86400000).toISOString(),
     orderCount: c.orders,
     totalSpent: c.spent,
     phone: `55555501${String(10 + i).slice(-2)}`,
@@ -78,10 +78,38 @@ const ORDER_PLAN = [
   { who: 0, status: 'SHIPPED', confirmed: true, carrier: 'USPS', track: '9405511202555987654321', trackingStatus: 'PRE_SHIPMENT', items: [['NAD+ 500mg', 2, 55]], method: 'USDT' },
 ]
 
+/**
+ * Hours before NOW for each order, so the "Today" counters have something true to
+ * count. The previous version stepped forward from a fixed 6 Oct start, which meant
+ * exactly ONE order landed on the current day: honest, but it left Shipped-today and
+ * New-today at 1 and Delivered-today at 0 — nothing to look at and nothing to test.
+ *
+ * The first four are within today; the rest spread back over the past three weeks.
+ * Offsets, not absolute dates, so the set stays current whenever it is booted.
+ */
+const ORDER_HOURS_AGO = [2, 5, 9, 20, 28, 40, 52, 76, 100, 130, 170, 210]
+
+/**
+ * Deliberately placed so the Today counters all have a NON-ZERO, verifiable value:
+ *   index 4 (DELIVERED) and 6 (SHIPPED) are inside today, so deliveredToday and
+ *   shippedToday are both >= 1 and each can be checked against the order list.
+ * The rest spread back over three weeks so the date filters have older rows too.
+ * Offsets, not absolute dates, so this stays true whenever it is booted.
+ */
+const ORDER_HOURS_AGO_BY_INDEX = {
+  // Index -> hours before NOW. Checked against ORDER_PLAN: 3 and 7 are DELIVERED,
+  // 2 and 4 are SHIPPED, 0/1/6 are the earlier stages. (Targeting 4 and 6 first was a
+  // mistake — I read the ORDER NUMBER as the index, which is off by one, so the
+  // delivered order stayed on yesterday and deliveredToday read a hard-looking 0.)
+  3: 5, 7: 8,
+  2: 3, 4: 10,
+  0: 2, 1: 7, 6: 12,
+}
+
 export function seedOrders() {
   const customers = seedCustomers()
   const out = []
-  const base = Date.UTC(2026, 9, 6, 15, 30)
+  const base = Date.now()
   ORDER_PLAN.forEach((plan, i) => {
     const cust = customers[plan.who]
     // Declared AFTER `cust`: `const` does not hoist, and using it earlier threw
@@ -125,8 +153,8 @@ export function seedOrders() {
       tracking: plan.carrier
         ? { carrier: plan.carrier, number: plan.track, status: plan.trackingStatus }
         : null,
-      placedAt: new Date(base + i * 86400000 * 0.7).toISOString(),
-      createdAt: new Date(base + i * 86400000 * 0.7).toISOString(),
+      placedAt: new Date(base - (ORDER_HOURS_AGO_BY_INDEX[i] ?? ORDER_HOURS_AGO[i]) * 3600000).toISOString(),
+      createdAt: new Date(base - (ORDER_HOURS_AGO_BY_INDEX[i] ?? ORDER_HOURS_AGO[i]) * 3600000).toISOString(),
       shippingAddress: {
         fullName: cust.name,
         addressLine1: `${100 + i} Example Avenue`,
@@ -137,7 +165,7 @@ export function seedOrders() {
         country: 'US',
         phone: cust.phone,
       },
-      paymentProof: plan.confirmed ? { uploadedAt: new Date(base + i * 86400000 * 0.7 + 3600000).toISOString(), bytes: 240000 + i * 1000, stored: false } : null,
+      paymentProof: plan.confirmed ? { uploadedAt: new Date(base - (ORDER_HOURS_AGO_BY_INDEX[i] ?? ORDER_HOURS_AGO[i]) * 3600000 + 1800000).toISOString(), bytes: 240000 + i * 1000, stored: false } : null,
       [SEED_MARK]: true,
     })
   })
@@ -160,7 +188,8 @@ const TICKET_PLAN = [
 
 export function seedTickets() {
   const customers = seedCustomers()
-  const base = Date.UTC(2026, 9, 9, 9, 0)
+  // Relative to boot as well: fixed timestamps drift into "opened 400d ago".
+  const base = Date.now() - 5 * 86400000
   return TICKET_PLAN.map((t, i) => {
     // The Support page treats "needs a reply" as `status === OPEN && last message is
     // from the CUSTOMER`. Seeding a ticket as IN_PROGRESS whose last message was the

@@ -755,6 +755,78 @@ const todayLine = await get('/api/admin/dashboard/today')
 check('the Today activity line resolves', typeof todayLine.body?.newOrders === 'number',
   JSON.stringify(todayLine.body))
 
+/* ============================================================= PHASE 12 ==== */
+
+phase('12. The fallback endpoints a page actually reads')
+
+// These served `{}` while a page was READING them. An empty object satisfies
+// `if (data)`, so every number rendered blank and the response looked correct — the
+// same failure as the dashboard tiles. Each is asserted against the list it feeds.
+const todayStats = await get('/api/admin/orders/today-stats')
+check('today-stats exposes the keys OrdersPage reads',
+  ['deliveredToday', 'shippedToday', 'newToday'].every((k) => k in (todayStats.body || {})),
+  `keys: ${Object.keys(todayStats.body || {}).join(', ')}`)
+// The predicate is "TODAY", not "any order with that status". Asserting
+// `status === 'DELIVERED'` against the WHOLE list was my mistake: it compared a
+// today-scoped counter to an all-time total and failed on a server that was right.
+const allOrd2 = (await get('/api/admin/orders')).body.orders
+const todayKey = new Date().toISOString().slice(0, 10)
+const placedToday = allOrd2.filter((o) => String(o.placedAt || '').slice(0, 10) === todayKey)
+eq('deliveredToday equals the orders DELIVERED today', todayStats.body?.deliveredToday,
+  placedToday.filter((o) => o.status === 'DELIVERED').length)
+eq('shippedToday equals the orders SHIPPED today', todayStats.body?.shippedToday,
+  placedToday.filter((o) => o.status === 'SHIPPED').length)
+eq('newToday equals the orders PLACED today', todayStats.body?.newToday, placedToday.length)
+// A dashboard of zeros cannot be distinguished from a broken one, so the fixtures are
+// arranged to put a real order in each bucket.
+check('the fixtures make all three counters non-zero',
+  (todayStats.body?.deliveredToday || 0) > 0 && (todayStats.body?.shippedToday || 0) > 0 && (todayStats.body?.newToday || 0) > 0,
+  `delivered=${todayStats.body?.deliveredToday} shipped=${todayStats.body?.shippedToday} new=${todayStats.body?.newToday}`)
+
+const oc = await get('/api/admin/open-carts?page=1&limit=25')
+check('open-carts returns {carts, stats, pagination}',
+  Array.isArray(oc.body?.carts) && !!oc.body?.stats && !!oc.body?.pagination,
+  `keys: ${Object.keys(oc.body || {}).join(', ')}`)
+// The row renders `r.user.id`. A cart with only a top-level id threw
+// "Cannot read properties of undefined (reading 'id')" DURING RENDER, which the error
+// boundary turned into a full-page failure — from a 200 response. A test that only
+// checked the status code would have called that a pass.
+check('every cart carries the user object the row reads',
+  (oc.body?.carts || []).every((c) => c.user && c.user.id != null),
+  `${(oc.body?.carts || []).filter((c) => !c.user?.id).length} missing user.id`)
+check('open-carts stats expose the header keys',
+  ['totalItems', 'totalValue', 'totalCarts', 'productItems', 'groupBuyItems', 'saleItems']
+    .every((k) => k in (oc.body?.stats || {})),
+  `keys: ${Object.keys(oc.body?.stats || {}).join(', ')}`)
+
+// Every page the browser actually visits, asserted on RENDER rather than on status:
+// no error boundary, no console error, and the loading state resolved. A 200 alone is
+// not evidence that a screen works.
+const browserPages = [
+  ['/admin', 'Today'], ['/admin/orders', 'Orders'], ['/admin/open-carts', 'Open carts'],
+  ['/admin/support', 'Support'], ['/admin/users', 'Customers'], ['/admin/products', 'Products'],
+  ['/admin/groupbuys', 'Group buys'], ['/admin/inventory', 'Stock'], ['/admin/reports', 'Reports'],
+]
+
+const uiPages = new URL('./smoke-pages.py', import.meta.url).pathname
+const { spawnSync: spawn2 } = await import('node:child_process')
+const probe2 = spawn2(py, ['-c', 'import playwright'], { encoding: 'utf8' })
+if (probe2.status !== 0) {
+  skip('page render sweep', `Playwright not importable by ${py}`)
+} else {
+  const args = [uiPages, '--base', BASE]
+  for (const [route] of browserPages) args.push(route)
+  const res2 = spawn2(py, args, { encoding: 'utf8' })
+  const out2 = (res2.stdout || '').trim()
+  for (const line of out2.split('\n')) {
+    if (!line.trim()) continue
+    console.log(`  ${line}`)
+    const m = /^\s*(PASS|FAIL|SKIP|BLOCK)\s+(.*)$/.exec(line)
+    if (m) record(m[1] === 'BLOCK' ? 'BLOCKED' : m[1], `[pages] ${m[2]}`, '')
+  }
+  if (!out2) fail('page render sweep', `exited ${res2.status}: ${(res2.stderr || '').slice(0, 200)}`)
+}
+
 /* ================================================================ summary == */
 
 const tally = results.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), {})
