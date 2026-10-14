@@ -825,7 +825,12 @@ const server = createServer({
   if (VERBOSE) console.log(`  <- ${req.method} ${host}${pathname}`)
 
   // --- the community host is a different application ---------------------
-  if (host.startsWith('community.')) {
+  // `/api/*` is deliberately EXCLUDED here. The API branches are host-agnostic and sit
+  // further down the handler, so returning early for them would break the community
+  // client's own API calls; letting this branch handle them served the SPA shell (or the
+  // placeholder) where the client expects JSON. Non-API paths belong to the app and are
+  // answered entirely within this branch.
+  if (host.startsWith('community.') && !pathname.startsWith('/api/')) {
     if (COMMUNITY_ORIGIN) {
       try {
         const upstream = await fetch(COMMUNITY_ORIGIN + pathname + url.search, { method: req.method })
@@ -842,6 +847,11 @@ const server = createServer({
     }
     // --- the captured community client -----------------------------------
     // Served before the placeholder so a capture, once present, is what users get.
+    // An /api/ request must never be answered with the SPA shell: the client would get
+    // HTML where it expects JSON. Hand it to the API branches below, which are
+    // host-agnostic, so the community client reaches /api/community/* exactly as it
+    // does in production. This has to happen BEFORE file resolution — the catch-all
+    // in this branch would otherwise claim it.
     if (existsSync(join(COMMUNITY_DIR, 'index.html'))) {
       const rel = pathname.replace(/^\//, '')
       let file = rel === '' ? join(COMMUNITY_DIR, 'index.html') : resolveFile(COMMUNITY_DIR, rel)
