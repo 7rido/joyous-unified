@@ -77,13 +77,21 @@ function buildSeedCart() {
       product: first, variant: v, groupBuyItem: null, saleItem: null, campaign: null,
     })
   }
-  const second = catalogProducts[3]
+  // A pack line: pack deals are chosen on the detail page and stored on the line, so
+  // seeding one keeps that pricing path exercised by the default state.
+  const second = catalogProducts.find((p) => (p.variants ?? []).some((v) =>
+    (v.quantityDiscounts ?? []).some((q) => q.packPrice > 0 && (v.stockQty ?? 0) > 10)))
   if (second) {
-    const v = second.variants?.[0] ?? null
+    const pv = (second.variants ?? []).find((v) =>
+      (v.quantityDiscounts ?? []).some((q) => q.packPrice > 0))
+    const pack = (pv?.quantityDiscounts ?? []).find((q) => q.packPrice > 0) ?? null
     items.push({
       id: 'seed-product-2', kind: 'product', productId: second.id,
-      variantId: v?.id ?? null, quantity: 1,
-      product: second, variant: v, groupBuyItem: null, saleItem: null, campaign: null,
+      variantId: pv?.id ?? null, quantity: 1,
+      packType: pack ? `${pack.minQuantity}-pack` : null,
+      packSize: pack?.minQuantity ?? null,
+      packPrice: pack?.packPrice ?? null,
+      product: second, variant: pv, groupBuyItem: null, saleItem: null, campaign: null,
     })
   }
   const camp = catalogCampaigns[0]
@@ -288,8 +296,13 @@ const server = createServer(async (req, res) => {
         const product = catalogProducts.find((x) => x.id === body.productId) ?? null
         const variants = product?.variants ?? []
         const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
+        // Pack deals are selected on the detail page and travel on the line:
+        //   {packType:"5-pack", packSize:5, packPrice:65}
+        // The cart prices such a line as packPrice * quantity, so dropping these
+        // fields silently repriced a $65 five-pack as 5 x $15 = $75.
         cart.push({ id: `local-p-${Date.now()}`, kind: 'product', productId: body.productId,
           variantId: body.variantId ?? variant?.id ?? null, quantity: qty,
+          packType: body.packType ?? null, packSize: body.packSize ?? null, packPrice: body.packPrice ?? null,
           product, variant, groupBuyItem: null, saleItem: null, campaign: null })
       }
       console.log(`  [cart] POST -> ${cart.length} line(s)`)
