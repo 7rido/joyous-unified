@@ -42,6 +42,53 @@ try {
   catalogProducts = JSON.parse(readFileSync(join(SAMPLES, 'api_products_catalog.json'), 'utf8')).products ?? []
 } catch { /* leave empty */ }
 
+/**
+ * Inventory test suite - 5 products seeded to stress stock edges. Appended to the
+ * live catalogue so both the storefront and the admin Products page see them.
+ *
+ * `"unlimited"` in the fixture is revived to Infinity here. It has to be a number
+ * rather than null because the client decides availability with a `> 0` test, and
+ * `null > 0` is false - the digital product would have rendered Sold out. Infinity
+ * also cannot survive JSON.stringify, so UNLIMITED_STOCK is what goes on the wire.
+ */
+const UNLIMITED_STOCK = 999999
+
+/** Served when a product has no image anywhere; see the catalogue handler. */
+const PLACEHOLDER_IMAGE = '/uploads/placeholders/no-image.svg'
+const unlimitedVariants = new Set()
+let inventoryTests = []
+try {
+  inventoryTests = JSON.parse(readFileSync(join(SAMPLES, 'api_products_inventory-tests.json'), 'utf8')).products ?? []
+  const revive = (node, kind) => {
+    for (const field of ['stockQty', 'availableStock']) {
+      if (node[field] === 'unlimited') {
+        node[field] = Infinity
+        if (kind === 'variant') unlimitedVariants.add(node.id)
+      }
+    }
+  }
+  for (const prod of inventoryTests) {
+    revive(prod, 'product')
+    for (const v of prod.variants ?? []) revive(v, 'variant')
+  }
+  catalogProducts = catalogProducts.concat(inventoryTests)
+  console.log(`  seeded ${inventoryTests.length} inventory test products`)
+} catch { /* suite not generated */ }
+
+/** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
+const wireStock = (n) => (n === Infinity ? UNLIMITED_STOCK : n)
+
+/** Look up the stock ceiling for a product/variant, or null when not our catalogue. */
+function stockCeiling(productId, variantId) {
+  const prod = catalogProducts.find((x) => x.id === productId)
+  if (!prod) return null
+  const variants = prod.variants ?? []
+  const variant = variants.find((v) => v.id === variantId) ?? variants[0] ?? null
+  if (!variant) return { available: prod.stockQty === Infinity ? Infinity : (prod.stockQty ?? 0), prod, variant: null }
+  const raw = variant.availableStock ?? variant.stockQty
+  return { available: raw === Infinity ? Infinity : (raw ?? 0), prod, variant }
+}
+
 /** Read a request body as text (used by the few endpoints that accept one). */
 function readBody(req) {
   return new Promise((resolve) => {
@@ -302,6 +349,61 @@ const server = createServer(async (req, res) => {
     return
   }
 
+  // --- the catalogue, served from STATE not from the file ---------------
+  // The replay reads api_products_catalog.json straight off disk, which cannot show
+  // stock moving. Serving the in-memory catalogue instead is what makes a placed order
+  // decrement stock on the storefront: this array is the same one the cart validates
+  // against and the order path decrements.
+  // One transform pair, used by both the catalogue and the single-product route, so
+  // the two can never disagree about stock or images.
+  //
+  // Image fallback is applied as DATA: the compiled card resolves
+  // `product.images[0]?.url || variant.images[0]?.url`, and when both are empty it
+  // renders nothing at all - no <img>, no placeholder, no broken-image icon. The
+  // client cannot be edited, so an imageless product gets the local SVG here.
+  const withImage = (node) => {
+    if ((node.images ?? []).length > 0) return node
+    if ((node.variants ?? []).flatMap((v) => v.images ?? [])[0]) return node
+    return { ...node, images: [{ url: PLACEHOLDER_IMAGE, sortOrder: 0 }] }
+  }
+  const wireProduct = (prod) => ({
+    ...withImage(prod),
+    stockQty: wireStock(prod.stockQty),
+    variants: (prod.variants ?? []).map((v) => ({
+      ...v,
+      stockQty: wireStock(v.stockQty),
+      availableStock: wireStock(v.availableStock ?? v.stockQty),
+    })),
+  })
+
+  if (pathname === '/api/products/catalog' && req.method === 'GET') {
+    const products = catalogProducts.map(wireProduct)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({
+      products,
+      productTypes: [...new Set(products.map((p) => p.productType).filter(Boolean))],
+    }))
+    return
+  }
+
+  // GET /api/products/<slug-or-id> - the detail page reads { product, related }.
+  // Unhandled it answered {} and every detail page rendered "Try again".
+  if (pathname.startsWith('/api/products/') && req.method === 'GET') {
+    const key = decodeURIComponent(pathname.slice('/api/products/'.length))
+    if (key && !key.includes('/')) {
+      const raw = catalogProducts.find((p) => p.slug === key || p.id === key)
+      if (raw) {
+        const related = catalogProducts
+          .filter((p) => p.id !== raw.id && (p.category?.name ?? p.category) === (raw.category?.name ?? raw.category))
+          .slice(0, 6)
+          .map(wireProduct)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ product: wireProduct(raw), related }))
+        return
+      }
+    }
+  }
+
   // --- order creation and payment proof ---------------------------------
   // These are the two endpoints a checkout ENDS on, and neither can be recorded: one
   // creates an order and the other accepts an upload. Synthesised here so the flow
@@ -363,6 +465,29 @@ const server = createServer(async (req, res) => {
     order.subtotal = order.total
     order.totalAmount = order.total
     orders.push(order)
+
+    // Decrement stock for the exact products ordered. This is what makes the numbers
+    // move on the storefront AND the admin Products page: both read catalogProducts,
+    // so one decrement shows up in both. Unlimited lines are skipped.
+    for (const item of order.items) {
+      if (!item.productId) continue
+      const ceiling = stockCeiling(item.productId, item.variantId)
+      if (!ceiling || !ceiling.variant) continue
+      const v = ceiling.variant
+      const from = v.availableStock ?? v.stockQty
+      if (from === Infinity) continue          // digital/unlimited: nothing to deduct
+      const next = Math.max(0, (from ?? 0) - (item.quantity ?? 0))
+      v.availableStock = next
+      v.stockQty = next
+      const prod = ceiling.prod
+      const total = (prod.variants ?? []).reduce((n, x) => {
+        const raw = x.availableStock ?? x.stockQty
+        return n + (raw === Infinity ? 0 : (raw ?? 0))
+      }, 0)
+      prod.stockQty = total
+      console.log(`  [stock] ${prod.name}: ${from} -> ${next} (ordered ${item.quantity})`)
+    }
+
     cart = []                    // a placed order empties the cart
     console.log(`  [order] created ${order.orderNumber} with ${order.items.length} item(s)`)
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -497,6 +622,28 @@ const server = createServer(async (req, res) => {
         (body.saleItemId && i.saleItemId === body.saleItemId) ||
         (body.productId && i.productId === body.productId &&
           (i.variantId ?? null) === (body.variantId ?? i.variantId ?? null)))
+      // Stock guard. Checked BEFORE the line is written, so an over-add leaves the cart
+      // exactly as it was rather than half-applied.
+      if (body.productId) {
+        const ceiling = stockCeiling(body.productId, body.variantId)
+        if (ceiling && ceiling.available !== Infinity) {
+          const already = cart
+            .filter((i) => i.productId === body.productId && (i.variantId ?? null) === (body.variantId ?? ceiling.variant?.id ?? null))
+            .reduce((n, i) => n + (i.quantity ?? 0), 0)
+          if (already + qty > ceiling.available) {
+            console.log(`  [cart] REFUSED ${already}+${qty} > ${ceiling.available} stock`)
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({
+              error: 'Cannot add more items than available stock',
+              message: `Only ${ceiling.available} of ${ceiling.prod.name} in stock` +
+                (already ? `, and ${already} ${already === 1 ? 'is' : 'are'} already in your cart.` : '.'),
+              available: ceiling.available, inCart: already, requested: qty,
+            }))
+            return
+          }
+        }
+      }
+
       if (existing) {
         existing.quantity += qty
         console.log(`  [cart] POST merge -> ${existing.id.slice(0, 16)} qty ${existing.quantity}`)
@@ -560,7 +707,23 @@ const server = createServer(async (req, res) => {
       try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
       const line = cart.find((i) => i.id === id)
       if (line) {
-        line.quantity = Number(body.quantity) || line.quantity
+        const want = Number(body.quantity) || line.quantity
+        // Same ceiling as POST. PUT sets the quantity outright, so it is THIS number
+        // that must fit - not a delta.
+        if (line.productId && want > 0) {
+          const ceiling = stockCeiling(line.productId, line.variantId)
+          if (ceiling && ceiling.available !== Infinity && want > ceiling.available) {
+            console.log(`  [cart] REFUSED PUT qty ${want} > ${ceiling.available} stock`)
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({
+              error: 'Cannot add more items than available stock',
+              message: `Only ${ceiling.available} of ${ceiling.prod.name} in stock.`,
+              available: ceiling.available, requested: want,
+            }))
+            return
+          }
+        }
+        line.quantity = want
         console.log(`  [cart] PUT ${id.slice(0, 16)} -> quantity ${line.quantity}`)
       } else {
         console.log(`  [cart] PUT ${id.slice(0, 16)} -> NO SUCH LINE`)
@@ -756,12 +919,24 @@ const server = createServer(async (req, res) => {
           const codes = variants.flatMap((v) => (v.images ?? []).map((i) => i.url))
             .concat((p.images ?? []).map((i) => i.url))
             .map((u) => u.match(SKU)?.[1]).filter(Boolean)
-          const stockQty = variants.reduce((n, v) => n + (v.availableStock ?? v.stockQty ?? 0), 0)
+          // Infinity is not JSON, and summing it would poison the total, so unlimited
+          // variants contribute nothing to the number but still ship as UNLIMITED_STOCK.
+          const stockQty = variants.reduce((n, v) => {
+            const raw = v.availableStock ?? v.stockQty
+            return n + (raw === Infinity ? 0 : (raw ?? 0))
+          }, 0)
           return {
             ...p,
+            // ONE stockQty key only. A second one below silently overwrote this and the
+            // unlimited product reported 0 - a duplicate object key is not an error in
+            // JS, just a last-one-wins assignment.
+            stockQty: p.stockQty === Infinity ? UNLIMITED_STOCK : stockQty,
             sku: codes[0] ?? null,
-            variants,
-            stockQty,
+            variants: variants.map((v) => ({
+              ...v,
+              stockQty: wireStock(v.stockQty),
+              availableStock: wireStock(v.availableStock ?? v.stockQty),
+            })),
             isVisible: true,
             archived: false,
             categoryName: p.category?.name ?? p.category ?? null,

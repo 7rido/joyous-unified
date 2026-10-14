@@ -1,0 +1,246 @@
+{
+ "__mock": "inventory test suite - seeded, not recorded",
+ "__note": "stock values 'unlimited' are revived to Infinity by the server",
+ "products": [
+  {
+   "id": "21b35213-92c5-51ab-9b59-1b565ef8b550",
+   "name": "Product A (High Stock)",
+   "slug": "test-product-a-high-stock",
+   "isNew": false,
+   "productType": "VIAL",
+   "requiredTier": "USER",
+   "pricePerUnit": 25,
+   "stockQty": 100,
+   "saleDiscount": null,
+   "category": {
+    "id": "3a5ee5bf-a279-5896-b110-712ee4becedc",
+    "name": "Inventory Tests",
+    "slug": "inventory-tests",
+    "code": "TEST"
+   },
+   "tags": [
+    "inventory-test",
+    "expect:standard deduction"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "d8b565c4-7823-5fec-9bc7-34295884de73",
+     "name": "Default",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 25,
+     "stockQty": 100,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 100
+    }
+   ],
+   "__test": true,
+   "__expect": "standard deduction"
+  },
+  {
+   "id": "1f7cce36-dfb8-5575-be20-146e1ec4ec41",
+   "name": "Product B (Low Stock)",
+   "slug": "test-product-b-low-stock",
+   "isNew": false,
+   "productType": "VIAL",
+   "requiredTier": "USER",
+   "pricePerUnit": 30,
+   "stockQty": 2,
+   "saleDiscount": null,
+   "category": {
+    "id": "3a5ee5bf-a279-5896-b110-712ee4becedc",
+    "name": "Inventory Tests",
+    "slug": "inventory-tests",
+    "code": "TEST"
+   },
+   "tags": [
+    "inventory-test",
+    "expect:scarce inventory triggers"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0014-1769835905549.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "42618ab6-2710-5c3c-8c20-16f72eaad665",
+     "name": "Default",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 30,
+     "stockQty": 2,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0014-1769835905549.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 2
+    }
+   ],
+   "__test": true,
+   "__expect": "scarce inventory triggers"
+  },
+  {
+   "id": "7e107f18-1eed-579c-9ae1-cd33b5d1e926",
+   "name": "Product C (Out of Stock)",
+   "slug": "test-product-c-out-of-stock",
+   "isNew": false,
+   "productType": "VIAL",
+   "requiredTier": "USER",
+   "pricePerUnit": 35,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "3a5ee5bf-a279-5896-b110-712ee4becedc",
+    "name": "Inventory Tests",
+    "slug": "inventory-tests",
+    "code": "TEST"
+   },
+   "tags": [
+    "inventory-test",
+    "expect:add to cart disabled / greyed out"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-NEU-0001-1771299901906.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "997ca856-0281-511c-aad0-149f02108403",
+     "name": "Default",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 35,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-NEU-0001-1771299901906.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 0
+    }
+   ],
+   "__test": true,
+   "__expect": "add to cart disabled / greyed out"
+  },
+  {
+   "id": "e2c4e59b-a321-507e-8888-4b41f13512f3",
+   "name": "Product D (Unlimited / Digital)",
+   "slug": "test-product-d-unlimited-digital",
+   "isNew": false,
+   "productType": "VIAL",
+   "requiredTier": "USER",
+   "pricePerUnit": 40,
+   "stockQty": "unlimited",
+   "saleDiscount": null,
+   "category": {
+    "id": "3a5ee5bf-a279-5896-b110-712ee4becedc",
+    "name": "Inventory Tests",
+    "slug": "inventory-tests",
+    "code": "TEST"
+   },
+   "tags": [
+    "inventory-test",
+    "expect:skips stock checks"
+   ],
+   "images": [],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "0c8530ea-2077-58b7-b881-d0cb3924e200",
+     "name": "Default",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 40,
+     "stockQty": "unlimited",
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": "unlimited"
+    }
+   ],
+   "__test": true,
+   "__expect": "skips stock checks"
+  },
+  {
+   "id": "d2f86e53-2e32-5fa6-87a9-ad8a0fc7add3",
+   "name": "Product E (Bulk Test)",
+   "slug": "test-product-e-bulk-test",
+   "isNew": false,
+   "productType": "VIAL",
+   "requiredTier": "USER",
+   "pricePerUnit": 45,
+   "stockQty": 10,
+   "saleDiscount": null,
+   "category": {
+    "id": "3a5ee5bf-a279-5896-b110-712ee4becedc",
+    "name": "Inventory Tests",
+    "slug": "inventory-tests",
+    "code": "TEST"
+   },
+   "tags": [
+    "inventory-test",
+    "expect:adding 11 must be refused"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0003-1783285827840.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "a33bd12e-bacf-540a-b24b-0e7e71d8b730",
+     "name": "Default",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 45,
+     "stockQty": 10,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0003-1783285827840.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 10
+    }
+   ],
+   "__test": true,
+   "__expect": "adding 11 must be refused"
+  }
+ ]
+}

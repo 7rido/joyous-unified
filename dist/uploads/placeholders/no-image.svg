@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="No image available">
+  <defs>
+    <pattern id="hatch" width="14" height="14" patternUint="userSpaceOnUse" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="14" height="14" fill="#f4f4f5"/>
+      <line x1="0" y1="0" x2="0" y2="14" stroke="#e4e4e7" stroke-width="5"/>
+    </pattern>
+  </defs>
+  <rect width="400" height="400" fill="url(#hatch)"/>
+  <g fill="none" stroke="#a1a1aa" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="112" y="132" width="176" height="140" rx="14"/>
+    <path d="M112 236l46-44 38 34 40-40 52 50"/>
+  </g>
+  <circle cx="168" cy="174" r="15" fill="#a1a1aa"/>
+  <text x="200" y="322" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+        font-size="21" fill="#71717a" letter-spacing="1.5">NO IMAGE</text>
+</svg>
