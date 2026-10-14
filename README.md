@@ -123,6 +123,11 @@ Its API **is** substituted locally, including a demo dataset. See `community/DEM
 how to sign in and an explicit account of what is real (the client, the shapes) versus
 invented (the content, the session).
 
+For how the three surfaces relate — route tables, which host serves what, and the
+cross-app links — see **`TOPOLOGY.md`**. The short version: the server is **host-aware but
+not route-aware**, so every path on a host returns that host's shell and neither host can
+return a meaningful 404.
+
 ## What is in dist/
 
 | | |

@@ -13,6 +13,8 @@ node tests/smoke.mjs --python ../.harbor-env/tools/perfect-web-clone/bin/python
 
 ## The three clients
 
+Route tables, cross-app links and which host serves what: **`TOPOLOGY.md`**.
+
 | | Source | Status |
 | --- | --- | --- |
 | Member app (`/`) | **their compiled bundle**, 163 chunks | ~100% — captured verbatim |
@@ -20,7 +22,7 @@ node tests/smoke.mjs --python ../.harbor-env/tools/perfect-web-clone/bin/python
 | Community (`community.*`) | **their compiled bundle**, separate SPA | Client verbatim, API substituted |
 | Landing clone (`/app/`) | **authored** React with `_source-original/` beside it | Reimplementation |
 
-**35 member routes** start with `/` in the route table (including `/admin`); **38** further
+**35 member routes** start with `/` in the route table (including `/admin`); **39** further
 entries are relative children under `/admin`. 89 API responses were recorded; everything
 else the client calls is authored here.
 
