@@ -19,7 +19,10 @@
 
 import { createServer } from 'node:http'
 import { wireOrderMilestones, orderEvents } from './order-emails.mjs'
-import { findPromo, discountFor, PROMO_CODES } from './promo-codes.mjs'
+import {
+  findPromo, discountFor, PROMO_CODES, promoIsUsable,
+  applyPromoOverlay, validatePromo,
+} from './promo-codes.mjs'
 import {
   validateProduct, applyProductOverlay, saveProductOverlay, stockFor, TIERS, STOCK_MODES,
 } from './admin-products.mjs'
@@ -83,6 +86,33 @@ const seededCampaigns = SEED_FIXTURES ? seedCampaigns() : { groupbuys: [], sales
  */
 const STOREFRONT_FILE = join(HERE, 'storefront-config.json')
 const storefront = readStorefrontConfig(STOREFRONT_FILE)
+
+/**
+ * Promo codes authored in the admin. Persisted and re-validated on load, so a code
+ * created, edited or switched off survives a restart and a hand-edited file cannot
+ * inject a discount the form would have refused. `deleted` keeps removed codes gone
+ * instead of letting them return from the shipped defaults on the next boot.
+ */
+const PROMOS_FILE = join(HERE, 'promo-codes.json')
+let promoOverlay = { codes: {}, deleted: [] }
+try {
+  promoOverlay = JSON.parse(readFileSync(PROMOS_FILE, 'utf8'))
+} catch { /* first run: ship the defaults */ }
+{
+  const { added, dropped } = applyPromoOverlay(PROMO_CODES, promoOverlay)
+  if (added.length || dropped.length) {
+    console.log(`  promo overlay: ${added.length} code(s) applied${dropped.length ? `, ${dropped.length} DROPPED (${dropped[0]})` : ''}`)
+  }
+}
+
+/** Write the overlay: the full code table plus the tombstones. Atomic, like the rest. */
+function savePromos() {
+  const codes = {}
+  for (const [code, promo] of Object.entries(PROMO_CODES)) codes[code] = validatePromo(promo, code).value
+  const tmp = `${PROMOS_FILE}.tmp`
+  writeFileSync(tmp, `${JSON.stringify({ codes, deleted: promoOverlay.deleted ?? [] }, null, 2)}\n`)
+  renameSync(tmp, PROMOS_FILE)
+}
 /** Every order the admin sees: seeded fixtures plus anything placed this session. */
 const allOrders = () => [...orders, ...seededOrders]
 
@@ -593,6 +623,58 @@ function resolveFile(base, rel) {
   }
 }
 
+/**
+ * Apply an admin form body to a promo code. Returns an error string, or null.
+ *
+ * The form sends `discountType` + `value`, but the ENGINE works in `percentOff` /
+ * `amountOff` / `freeShipping`. Translating here keeps one vocabulary at the edge and
+ * the engine untouched — and means a code created in the admin is priced by exactly the
+ * same code path as the two recorded ones.
+ */
+function applyDiscountBody(target, body) {
+  if (body.name !== undefined) target.name = String(body.name).slice(0, 80)
+  const type = body.discountType
+  const value = Number(body.value) || 0
+  if (type !== undefined) {
+    if (type === 'PERCENT') {
+      if (value <= 0 || value > 100) return 'A percentage must be between 1 and 100.'
+      target.percentOff = value; target.amountOff = 0; target.freeShipping = false
+    } else if (type === 'FIXED') {
+      if (value <= 0) return 'A fixed amount must be more than 0.'
+      target.amountOff = value; target.percentOff = 0; target.freeShipping = false
+    } else if (type === 'FREE_SHIPPING') {
+      target.freeShipping = true; target.percentOff = 0; target.amountOff = 0
+    } else {
+      return `discountType must be PERCENT, FIXED or FREE_SHIPPING (got ${type})`
+    }
+  }
+  if (body.freeShipping !== undefined && body.discountType === undefined) target.freeShipping = !!body.freeShipping
+  if (body.isActive !== undefined) target.isActive = !!body.isActive
+  for (const [key, max] of [['usageLimit', 1000000], ['perUserLimit', 1000]]) {
+    if (body[key] !== undefined) {
+      if (body[key] === null || body[key] === '') { target[key] = null; continue }
+      const n = Number(body[key])
+      if (!Number.isInteger(n) || n < 1 || n > max) return `${key} must be a whole number between 1 and ${max}.`
+      target[key] = n
+    }
+  }
+  if (body.minOrderAmount !== undefined) {
+    if (body.minOrderAmount === null || body.minOrderAmount === '') { target.minOrderAmount = null; return null }
+    const n = Number(body.minOrderAmount)
+    if (!Number.isFinite(n) || n < 0) return 'minOrderAmount must be 0 or more.'
+    target.minOrderAmount = Math.round(n * 100) / 100
+  }
+  // The form checks this client-side; a server that trusts that check is not a check.
+  const starts = body.startsAt ? new Date(body.startsAt) : null
+  const expires = body.expiresAt ? new Date(body.expiresAt) : null
+  if (starts && Number.isNaN(starts.getTime())) return 'startsAt is not a valid date.'
+  if (expires && Number.isNaN(expires.getTime())) return 'expiresAt is not a valid date.'
+  if (starts && expires && expires <= starts) return 'Expiry must be after the start.'
+  if (body.startsAt !== undefined) target.startsAt = starts ? starts.toISOString() : null
+  if (body.expiresAt !== undefined) target.expiresAt = expires ? expires.toISOString() : null
+  return null
+}
+
 /** Map an API path to its recorded sample: `/api/auth/me` -> api_auth_me.json */
 function sampleFileFor(pathname) {
   const name = pathname.replace(/\/+$/, '').replace(/^\//, '').replace(/\//g, '_')
@@ -1063,6 +1145,15 @@ const server = createServer({
       console.log(`  [promo] "${body.code ?? ''}" -> 400 ${found.error}`)
       res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: found.error }))
+      return
+    }
+    // Active + inside its window. Without this the admin's toggle would be cosmetic:
+    // a code switched off would keep discounting at checkout.
+    const usable = promoIsUsable(found.promo)
+    if (!usable.ok) {
+      console.log(`  [promo] "${found.code}" -> 400 ${usable.error}`)
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: usable.error }))
       return
     }
     const subtotal = cartSubtotal()
@@ -1887,6 +1978,135 @@ const server = createServer({
         }))
         console.log(`  [admin] /admin/orders -> ${withState.length} order(s) (${seededOrders.length} seeded)`)
         sendJson(res, 200, { orders: withState, total: withState.length, page: 1, pages: 1 })
+        return
+      }
+
+      // --- discount codes ---------------------------------------------------
+      // The admin page manages promo codes. It answered a bare `[]`, so the screen read
+      // "0 uses recorded across all codes" while the checkout's promo engine had two
+      // working codes behind it — the page and the engine disagreed about reality.
+      //
+      // `usageCount` is DERIVED from orders carrying that code, not a stored counter:
+      // a stored one drifts the moment an order is placed outside this screen.
+      if (pathname === '/api/admin/discounts' && req.method === 'GET') {
+        const codeUsage = () => {
+          const map = new Map()
+          for (const o of allOrders()) {
+            const c = o.discountCode
+            if (!c) continue
+            const cur = map.get(c) ?? { count: 0, total: 0 }
+            cur.count += 1
+            cur.total = Math.round((cur.total + (Number(o.discountAmount) || 0)) * 100) / 100
+            map.set(c, cur)
+          }
+          return map
+        }
+        const usage = codeUsage()
+        const rows = Object.values(PROMO_CODES).map((d) => {
+          const u = usage.get(d.code) ?? { count: 0, total: 0 }
+          return {
+            id: d.code,
+            code: d.code,
+            name: d.name,
+            // `discountType` + `value` is the form's pair; a free-shipping code carries
+            // no value, which is why the form only sends both when there is an amount.
+            discountType: d.freeShipping ? 'FREE_SHIPPING' : (d.percentOff > 0 ? 'PERCENT' : 'FIXED'),
+            value: d.percentOff || d.amountOff || 0,
+            freeShipping: !!d.freeShipping,
+            usageLimit: d.usageLimit ?? null,
+            perUserLimit: d.perUserLimit ?? null,
+            minOrderAmount: d.minOrderAmount ?? null,
+            startsAt: d.startsAt ?? null,
+            expiresAt: d.expiresAt ?? null,
+            isActive: d.isActive !== false,
+            usageCount: u.count,
+            totalDiscounted: u.total,
+            /** True for the two codes this replay ships with, so the screen can say so
+             *  rather than implying they were created here. */
+            __mock: true,
+          }
+        })
+        console.log(`  [admin] discounts -> ${rows.length} code(s), ${[...usage.values()].reduce((n, x) => n + x.count, 0)} use(s)`)
+        // `{discounts: [...]}`, NOT a bare array: the page reads `m.data.discounts || []`,
+        // so a bare array gave it `undefined || []` and the screen said "No discount
+        // codes yet" while the endpoint returned two perfectly good ones. The exact
+        // mirror of the support-tickets mistake, in the opposite direction.
+        sendJson(res, 200, {
+          discounts: rows,
+          total: rows.length,
+          uses: [...usage.values()].reduce((n, x) => n + x.count, 0),
+        })
+        return
+      }
+      const discMatch = new RegExp('^/api/admin/discounts/([^/]+?)(/toggle)?$').exec(pathname)
+      if (discMatch && !discMatch[2] && req.method === 'GET') {
+        const code = decodeURIComponent(discMatch[1]).toUpperCase()
+        const d = PROMO_CODES[code]
+        if (!d) { sendJson(res, 404, { error: 'No such discount code.', code }); return }
+        const usages = allOrders()
+          .filter((o) => o.discountCode === code)
+          .map((o) => ({
+            id: o.id, orderNumber: o.orderNumber, customer: o.customerName, email: o.email,
+            discountAmount: o.discountAmount, total: o.totalAmount ?? o.total, at: o.placedAt,
+          }))
+        sendJson(res, 200, { discount: { ...d, code, usageCount: usages.length, usages } })
+        return
+      }
+      if (discMatch && discMatch[2] && (req.method === 'PATCH' || req.method === 'POST')) {
+        // Toggle is the one mutation the row offers, and it must reach the checkout:
+        // a code switched off here has to stop working at validate-promo.
+        const code = decodeURIComponent(discMatch[1]).toUpperCase()
+        const d = PROMO_CODES[code]
+        if (!d) { sendJson(res, 404, { error: 'No such discount code.', code }); return }
+        d.isActive = d.isActive === false
+        // WITHOUT this the toggle was in-memory only: the code stopped discounting,
+        // then came back ON after a restart, which looks like the toggle undid itself.
+        savePromos()
+        console.log(`  [admin] discount ${code} -> isActive=${d.isActive}`)
+        sendJson(res, 200, { ok: true, discount: d })
+        return
+      }
+      if (discMatch && !discMatch[2] && req.method === 'PUT') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const code = decodeURIComponent(discMatch[1]).toUpperCase()
+        const d = PROMO_CODES[code]
+        if (!d) { sendJson(res, 404, { error: 'No such discount code.', code }); return }
+        const problem2 = applyDiscountBody(d, body)
+        if (problem2) { sendJson(res, 422, { error: problem2 }); return }
+        savePromos()
+        console.log(`  [admin] discount ${code} updated`)
+        sendJson(res, 200, { ok: true, discount: d })
+        return
+      }
+      if (pathname === '/api/admin/discounts' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const code = String(body.code ?? '').trim().toUpperCase()
+        if (!/^[A-Z0-9_-]{3,24}$/.test(code)) {
+          sendJson(res, 422, { error: 'Code must be 3-24 characters: letters, numbers, hyphen or underscore.' })
+          return
+        }
+        if (PROMO_CODES[code]) { sendJson(res, 409, { error: `${code} already exists.` }); return }
+        const created = { code, name: String(body.name ?? code).slice(0, 80), percentOff: 0, amountOff: 0, freeShipping: false, isActive: true, __mock: true }
+        const problem = applyDiscountBody(created, body)
+        if (problem) { sendJson(res, 422, { error: problem }); return }
+        PROMO_CODES[code] = created
+        savePromos()
+        console.log(`  [admin] discount created: ${code}`)
+        sendJson(res, 201, { ok: true, discount: created })
+        return
+      }
+      if (discMatch && !discMatch[2] && req.method === 'DELETE') {
+        const code = decodeURIComponent(discMatch[1]).toUpperCase()
+        if (!PROMO_CODES[code]) { sendJson(res, 404, { error: 'No such discount code.', code }); return }
+        delete PROMO_CODES[code]
+        // A tombstone, so the code does not reappear from the shipped defaults on the
+        // next boot — deletion would otherwise look like it silently undid itself.
+        promoOverlay.deleted = [...new Set([...(promoOverlay.deleted ?? []), code])]
+        savePromos()
+        console.log(`  [admin] discount deleted: ${code}`)
+        sendJson(res, 200, { ok: true, deleted: code })
         return
       }
 

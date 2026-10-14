@@ -58,6 +58,18 @@ let currentPhase = ''
  * `name` is the registry key (asserted to have run); `title` is what a human reads.
  * They differ so a long descriptive heading does not have to double as an identifier.
  */
+
+/**
+ * The live cart subtotal, summed the way the server sums it: `unitPrice * quantity`
+ * per line. `/api/cart` carries no top-level subtotal — only `items` and `cartType` —
+ * so a percentage assertion has to compute the base the same way the server does.
+ */
+async function liveCartSubtotal() {
+  const cart = (await get('/api/cart')).body
+  return Math.round((cart.items || []).reduce(
+    (n, l) => n + (Number(l.unitPrice) || 0) * (Number(l.quantity) || 0), 0) * 100) / 100
+}
+
 function phase(name, title) {
   currentPhase = title ?? name
   ranPhases.push(name)
@@ -172,7 +184,7 @@ const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
-  'fallback pages', 'insights', 'storefront',
+  'fallback pages', 'insights', 'storefront', 'discounts',
 ]
 const ranPhases = []
 
@@ -1131,6 +1143,100 @@ const bad = cfg.validateBanner({ style: 'nope' }, cfg.DEFAULT_BANNER)
 check('the loader refuses an invalid style from a hand-edited file', bad.ok === false,
   bad.errors.join('; '))
 await api('/api/admin/notification-banner', { method: 'PUT', body: { message: originalMsg } })
+
+/* ============================================================== discounts ==== */
+
+phase('discounts', 'Discount codes — wired to the live promo engine')
+
+// The page reads `m.data.discounts || []`. A BARE ARRAY gave it `undefined || []`, so
+// the screen said "No discount codes yet" while the endpoint returned two good ones --
+// the exact mirror of the support-tickets shape mistake, in the opposite direction.
+const discs = await get('/api/admin/discounts')
+check('discounts come back as {discounts: [...]}, not a bare array',
+  Array.isArray(discs.body?.discounts) && !Array.isArray(discs.body),
+  `keys: ${Object.keys(discs.body || {}).join(', ')}`)
+const codeRows = discs.body?.discounts || []
+check('the shipped codes are listed', codeRows.length >= 2, `${codeRows.length} code(s)`)
+check('each row carries the fields the table reads',
+  codeRows.every((c) => c.code && c.name && c.discountType && 'isActive' in c && 'usageCount' in c),
+  `keys: ${Object.keys(codeRows[0] || {}).join(', ')}`)
+
+// usageCount is DERIVED from orders carrying the code, not a stored counter that drifts
+// the moment an order is placed anywhere else.
+const ordersWithCode = (await get('/api/admin/orders?includeArchived=true')).body.orders
+const welcomeUses = ordersWithCode.filter((o) => o.discountCode === 'WELCOME10').length
+eq('usageCount is derived from the orders, not stored',
+  codeRows.find((c) => c.code === 'WELCOME10')?.usageCount, welcomeUses)
+check('the detail route reports who used it',
+  Array.isArray((await get(`/api/admin/discounts/WELCOME10`)).body?.discount?.usages),
+  'usages array present')
+
+// ---- the engine and the admin must agree about reality -------------------
+// The toggle is the whole point of the screen. Before this, a code switched off here
+// kept discounting at checkout: the button reported success and nothing changed.
+// A percentage of an EMPTY cart is $0.00, which reads as "the code is broken" when the
+// cart is simply empty. Earlier phases empty it, so fill it first.
+await clearCart()
+const promoProd = (await get('/api/products/catalog')).body.products.find((x) => !x.soldOut)
+if (promoProd) {
+  await post('/api/cart', { productId: promoProd.id, variantId: promoProd.variants?.[0]?.id, quantity: 4 })
+}
+const onBefore = await post('/api/checkout/validate-promo', { code: 'WELCOME10' })
+check('an active code discounts at checkout', onBefore.status === 200 && onBefore.body?.discount?.discountAmount > 0,
+  `discount=${onBefore.body?.discount?.discountAmount}`)
+await api('/api/admin/discounts/WELCOME10/toggle', { method: 'PATCH' })
+check('toggling it OFF is reflected in the list',
+  (await get('/api/admin/discounts')).body.discounts.find((c) => c.code === 'WELCOME10')?.isActive === false)
+const offNow = await post('/api/checkout/validate-promo', { code: 'WELCOME10' })
+check('and the checkout now REFUSES it', offNow.status === 400 && /not active/i.test(offNow.body?.error || ''),
+  `HTTP ${offNow.status} ${offNow.body?.error || ''}`)
+await api('/api/admin/discounts/WELCOME10/toggle', { method: 'PATCH' })
+check('toggling it back ON restores the discount',
+  (await post('/api/checkout/validate-promo', { code: 'WELCOME10' })).status === 200)
+
+// ---- a code created here is priced by the same engine --------------------
+const NEW = 'SMOKE' + String(Date.now()).slice(-6)
+const created2 = await post('/api/admin/discounts', { code: NEW, name: 'Smoke 25% off', discountType: 'PERCENT', value: 25 })
+check('a code can be created', created2.status === 201, `HTTP ${created2.status}`)
+const appliedNew = await post('/api/checkout/validate-promo', { code: NEW })
+check('the new code works at checkout', appliedNew.status === 200 && appliedNew.body?.discount?.discountAmount > 0,
+  `discount=${appliedNew.body?.discount?.discountAmount}`)
+const base = await liveCartSubtotal()
+check('it is priced as 25% of the cart subtotal',
+  Math.abs(appliedNew.body.discount.discountAmount - Math.round(base * 0.25 * 100) / 100) < 0.02,
+  `${appliedNew.body.discount.discountAmount} vs 25% of ${base}`)
+
+// ---- validation refuses rather than coercing -----------------------------
+const shortCode2 = await post('/api/admin/discounts', { code: 'AB', discountType: 'PERCENT', value: 10 })
+check('a too-short code is refused', shortCode2.status === 422, `HTTP ${shortCode2.status}`)
+const tooBig2 = await post('/api/admin/discounts', { code: 'BIG' + String(Date.now()).slice(-4), discountType: 'PERCENT', value: 500 })
+check('a 500% discount is refused', tooBig2.status === 422, `${tooBig2.body?.error || ''}`)
+const dupe2 = await post('/api/admin/discounts', { code: 'WELCOME10', discountType: 'PERCENT', value: 10 })
+check('a duplicate code is refused', dupe2.status === 409, `HTTP ${dupe2.status}`)
+const badDiscWindow = await api(`/api/admin/discounts/${NEW}`, {
+  method: 'PUT',
+  body: { startsAt: '2026-06-01T00:00:00.000Z', expiresAt: '2026-01-01T00:00:00.000Z' },
+})
+check('an expiry BEFORE the start is refused', badDiscWindow.status === 422, `${badDiscWindow.body?.error || ''}`)
+
+// ---- it persists, and a deleted code stays gone --------------------------
+await api(`/api/admin/discounts/${NEW}`, { method: 'DELETE' })
+check('a deleted code stops working',
+  (await post('/api/checkout/validate-promo', { code: NEW })).status === 400)
+const promosFile = new URL('../promo-codes.json', import.meta.url).pathname
+const onDiskPromos = JSON.parse((await import('node:fs')).readFileSync(promosFile, 'utf8'))
+check('the delete is tombstoned so it survives a restart',
+  (onDiskPromos.deleted || []).includes(NEW), `deleted: ${JSON.stringify(onDiskPromos.deleted)}`)
+check('the live codes are written to disk',
+  onDiskPromos.codes && Object.keys(onDiskPromos.codes).length >= 2,
+  `${Object.keys(onDiskPromos.codes || {}).length} persisted`)
+
+// Re-validated on load: a hand-edited file must not inject what the form would refuse.
+const promoMod = await import('../promo-codes.mjs')
+const evilPromo = promoMod.validatePromo({ code: 'EVIL', percentOff: 500 })
+check('the loader refuses a 500% discount from a hand-edited file', evilPromo.ok === false, evilPromo.errors.join('; '))
+const both = promoMod.validatePromo({ code: 'EVIL', percentOff: 10, amountOff: 5 })
+check('a code cannot be both a percentage and a fixed amount', both.ok === false, both.errors.join('; '))
 
 assertAllPhasesRan()
 
