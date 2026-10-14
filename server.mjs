@@ -53,6 +53,20 @@ const DIST = join(HERE, 'dist')
 const SAMPLES = join(HERE, 'api-samples')
 
 /**
+ * The community forum's captured client, served on the `community.*` host.
+ *
+ * This is the site's own compiled bundle, fetched verbatim (see community/manifest.json
+ * for the file list, sizes and sha256 per file). Served on its OWN HOST rather than a
+ * path prefix, so its root-relative `/assets/...` URLs resolve without rewriting any of
+ * its compiled code — 21 of its asset filenames collide with the member app's, and all
+ * 21 are byte-identical, so the two namespaces do not conflict.
+ *
+ * Missing directory => fall through to the placeholder that explains what is not
+ * running. Absent capture must never look like a broken app.
+ */
+const COMMUNITY_DIR = join(HERE, 'community')
+
+/**
  * Pack-deal overlay state. Declared up here WITH the other path constants, because
  * `const` is hoisted but not initialised: defining these further down meant the
  * boot-time applyPackDeals() threw "Cannot access 'PACK_DEALS_FILE' before
@@ -826,6 +840,36 @@ const server = createServer({
       }
       return
     }
+    // --- the captured community client -----------------------------------
+    // Served before the placeholder so a capture, once present, is what users get.
+    if (existsSync(join(COMMUNITY_DIR, 'index.html'))) {
+      const rel = pathname.replace(/^\//, '')
+      let file = rel === '' ? join(COMMUNITY_DIR, 'index.html') : resolveFile(COMMUNITY_DIR, rel)
+      // The community stylesheet references `/world/laminate.webp` and `/world/rail.webp`,
+      // which live in dist/world/ and were verified BYTE-IDENTICAL to the community's own
+      // copies — so they are served from there rather than duplicated into community/.
+      // Without this fallback they 404 and the CSS background silently disappears.
+      if (file === null && rel.startsWith('world/')) file = resolveFile(DIST, rel)
+      if (file === null) {
+        // A missing ASSET is a real 404 — never the SPA shell, which would make the
+        // client parse HTML as JavaScript and fail with a confusing syntax error.
+        if (/\.[a-z0-9]+$/i.test(rel)) {
+          console.log(`  [community] MISSING ${pathname}`)
+          res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found')
+          return
+        }
+        // Everything else is a client route (/r/:slug, /p/:id, /live/:id ...) and gets
+        // the shell, the same SPA fallback the member app uses.
+        file = join(COMMUNITY_DIR, 'index.html')
+      }
+      await sendFile(res, file, {
+        cache: rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+        range: req.headers.range,
+        req,
+      })
+      return
+    }
+
     // The code rides in the fragment, so the server never sees it; read it from the
     // Referer when a browser sends one, otherwise just explain.
     const code = (req.headers.referer ?? '').match(/code=([A-Za-z0-9_-]+)/)?.[1] ?? ''

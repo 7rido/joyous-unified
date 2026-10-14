@@ -1,0 +1,129 @@
+{
+ "capturedAt": "2026-10-14T20:55:19+00:00",
+ "files": {
+  "apple-touch-icon.png": {
+   "bytes": 37026,
+   "sha256": "cf75623a2bbfa6e9b49ebacb504aa1ca7e48045cbc1546b50ec5097626b7571c"
+  },
+  "assets/arrow-left-DPeh5L0h.js": {
+   "bytes": 338,
+   "sha256": "32ebec6c87759d946c0453475fe95dbf0224ad6b0656d90ecab37b2bdbc4ce74"
+  },
+  "assets/bell-Bn0hbbf8.js": {
+   "bytes": 463,
+   "sha256": "121309072cbc3b7f5a089b4cafcd5d150189e6796775ca9554bffc6f0d9283df"
+  },
+  "assets/chart-column-BbQDEQu-.js": {
+   "bytes": 424,
+   "sha256": "12302703f1d9980fd993c51f865cfdb71a792840066973d2d9537d04e9d56d6d"
+  },
+  "assets/chevron-left-DBDCtvpm.js": {
+   "bytes": 303,
+   "sha256": "666ec283ea9527a3511f26cf886edd0d7d4cc1c539b9f16cc347f9924d999a0f"
+  },
+  "assets/circle-x-DdwYvqvD.js": {
+   "bytes": 380,
+   "sha256": "b1eda9547a3a56c2414b51aaa0c3e505b1677137b998844ab5d194ef8e4353a7"
+  },
+  "assets/community-DZQlDHLK.js": {
+   "bytes": 788899,
+   "sha256": "77c92aaaa0d2f525cda4c1218a20d7e3692e2013f662a1e744b31d5712326808"
+  },
+  "assets/community-DilBuQPy.css": {
+   "bytes": 5272,
+   "sha256": "4a2b11f09d53487bf50819fd997069216b8933eca1c9aaec14b1e76dcce8a8ba"
+  },
+  "assets/endOfWeek-BqDSRTfg.js": {
+   "bytes": 2177,
+   "sha256": "5bd5d96c235b15c2023f9a7a33367ee0b9e67866acfd775d08a27654c37c9807"
+  },
+  "assets/file-text-BwfPekpC.js": {
+   "bytes": 558,
+   "sha256": "c35d2f50b82eeb45c03e8ebbeb2dc09bf3b2aa4c91a9d7ccb9a3bf1e0fe07696"
+  },
+  "assets/flag-4AXjK5yb.js": {
+   "bytes": 427,
+   "sha256": "779e8dba0f911a773363324122dd109a47db5f62201badae4f1c5a4495b112aa"
+  },
+  "assets/image-plus-yeG5pxg0.js": {
+   "bytes": 536,
+   "sha256": "c375ebf473dc9f0932f9ab3e27d2bc53735e6c17ab6ccb23c3c3f76f7f3f682f"
+  },
+  "assets/index-CI5bY398.css": {
+   "bytes": 163822,
+   "sha256": "b39761612eb9b43e2d3de5f7a16ccb75d5a146d52a6df69209c6c35a2149c268"
+  },
+  "assets/index-CI8edidq.js": {
+   "bytes": 246747,
+   "sha256": "e5b1f58ec0479771ab016fccca17aa05fd7e0ad6bc6973ec8e40eac17f34f28c"
+  },
+  "assets/index-DlflRjaZ.js": {
+   "bytes": 157707,
+   "sha256": "c97f4abbcb51f848ddd7491a951024cc387dc5e161c5031cbaa8fea17b2043a6"
+  },
+  "assets/loader-circle-BDQwNeuX.js": {
+   "bytes": 317,
+   "sha256": "8adff965b9851f6dc35897c4e661720235e8530b6f073d5baf52f72ee9ad7831"
+  },
+  "assets/message-circle-C3YDlkRs.js": {
+   "bytes": 414,
+   "sha256": "380c6a4d3f5d8017026dd9f89861b7b9b3747aa4bb3dc0403bdee6afdd608af4"
+  },
+  "assets/paperclip-tTrfnd6S.js": {
+   "bytes": 406,
+   "sha256": "85377a6f38a06f0c5f0d71a18705005c177dea5a94044f9e3f46069571e99c4c"
+  },
+  "assets/pencil-Drj0ntE6.js": {
+   "bytes": 449,
+   "sha256": "4b74a7d073d9ba0c96ac19c52074ce5f60b57b28f0753b7133b08201f192ce6f"
+  },
+  "assets/plus-ceBSd88x.js": {
+   "bytes": 326,
+   "sha256": "1362bae4783902f00510bfeb2173f569eaf5f36be464f14ec4fcbee9318141a2"
+  },
+  "assets/startOfWeek-DXVt4ysS.js": {
+   "bytes": 742,
+   "sha256": "cb1d6f7cba8bbbde29b52debce45c90a6641b6c0a0c1e52492afd702e0e7480b"
+  },
+  "assets/trash-2--tCa5_eE.js": {
+   "bytes": 501,
+   "sha256": "2b4f7f225b1be75c075ccb6d3009734d0a2d49ba812f8f95c19117a0d9f0d448"
+  },
+  "assets/upload-DEoO484a.js": {
+   "bytes": 403,
+   "sha256": "7b4832010afea9cdc35842b127818d77fcc8b6d85383f1743b87d2a644420527"
+  },
+  "assets/user-x-wqZcm3hY.js": {
+   "bytes": 479,
+   "sha256": "3e8906699917e5fcfa56edfde680c1b7cab2d1217fdc1580b214a604b2ec4ec4"
+  },
+  "assets/volume-2-a0DXaZKr.js": {
+   "bytes": 563,
+   "sha256": "d948b5a338c83e1ceb99295718b278dacb886ef16d686c7d896ef93df078488b"
+  },
+  "favicon-16.png": {
+   "bytes": 781,
+   "sha256": "28d88fd2bfb0f3585e1d71575b48572ea7c4554606551cbc4d5c7cc589338ce2"
+  },
+  "favicon-32.png": {
+   "bytes": 2130,
+   "sha256": "02f08356a7e88c73cf3c8ea036a497ca12e95e3c3486838385e050956f7eeb18"
+  },
+  "index.html": {
+   "bytes": 2842,
+   "sha256": "331b30ba3e177a3a1d4daae0959c213824c05051071c1d286845a61b05839349"
+  }
+ },
+ "method": "plain read-only GETs of the shell and every asset it references, crawled transitively via import() and url() references until none were missing",
+ "note": "Capture only: no request was made that changes state. The bundle is the site's own compiled client, served verbatim \u2014 not a reimplementation.",
+ "servedUnder": "/community/ on the community.* host (see server.mjs)",
+ "sharedWithMemberApp": {
+  "assets/index-CI8edidq.js": "vendor chunk, byte-shared with dist/assets/",
+  "world/laminate.webp, world/rail.webp": "referenced by community CSS but served from dist/world/ \u2014 verified byte-identical, so not duplicated here"
+ },
+ "source": "https://community.joyous.is",
+ "totals": {
+  "bytes": 1415432,
+  "files": 28
+ }
+}
