@@ -393,13 +393,18 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST') {
       let body = {}
       try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
-      if (body.productId && !wishlist.some((i) => i.productId === body.productId)) {
-        // Hydrate from the catalogue so the item has the same shape the real API
-        // returns. Without this the row has product: null and renders empty.
-        const product = catalogProducts.find((p) => p.id === body.productId) ?? null
-        const variants = product?.variants ?? []
-        const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
-        wishlist.push({
+      // The client does:  const {data:o} = await O.post('/wishlist', a)
+      //                   e({items:[o.item, ...]})
+      // so the response must carry `item`. Returning a summary ({ok, count}) left
+      // o.item undefined and the UI showed "Failed to update wishlist" for a write
+      // that had in fact succeeded.
+      const product = catalogProducts.find((p) => p.id === body.productId) ?? null
+      const variants = product?.variants ?? []
+      const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
+      let item = wishlist.find((i) => i.productId === body.productId &&
+        (i.variantId ?? null) === (body.variantId ?? null))
+      if (!item) {
+        item = {
           id: `local-${Date.now()}-${wishlist.length}`,
           productId: body.productId,
           variantId: body.variantId ?? null,
@@ -409,10 +414,12 @@ const server = createServer(async (req, res) => {
           hasVariants: variants.length > 0,
           availableStock: variant?.availableStock ?? product?.stockQty ?? 0,
           activeSale: null,
-        })
+        }
+        wishlist.push(item)
       }
+      console.log(`  [wishlist] POST ${item.id.slice(0, 16)} -> ${wishlist.length} item(s)`)
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify({ ok: true, items: wishlist.length }))
+      res.end(JSON.stringify({ item }))
       return
     }
   }
