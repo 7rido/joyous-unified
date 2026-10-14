@@ -199,10 +199,93 @@ async function sendFile(res, file, { cache, range, req } = {}) {
   res.end(body)
 }
 
+/**
+ * The community forum is a SEPARATE APPLICATION the client expects to find on its own
+ * host. The client picks it by environment:
+ *
+ *   function Po() {
+ *     const {hostname, port, protocol} = window.location
+ *     return hostname === 'localhost' || hostname === '127.0.0.1'
+ *       ? `${protocol}//community.localhost${port ? ':' + port : ''}`
+ *       : 'https://community.joyous.is'
+ *   }
+ *
+ * Clicking Community POSTs /api/community-handoff for a one-time code and redirects to
+ * `<community>/sso#code=...`. Nothing serves that host here, and because this server
+ * ignored the Host header it answered with the MEMBER APP - so the redirect landed the
+ * user silently inside the wrong application.
+ *
+ * A forum cannot be fabricated, so this host now says what is missing and carries the
+ * handoff code forward. Point COMMUNITY_ORIGIN at a real instance to proxy to it.
+ */
+const COMMUNITY_ORIGIN = process.env.COMMUNITY_ORIGIN ?? ''
+
+function communityPlaceholder(host, pathname, code) {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Community — not running here</title>
+<style>
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+         background:#1F1F20; color:#F7F8F9;
+         font:16px/1.5 Nunito, ui-rounded, system-ui, sans-serif; }
+  main { max-width:640px; padding:40px; }
+  h1 { font-size:1.6rem; margin:0 0 12px; color:#FFD93D; }
+  code { background:#141415; padding:2px 6px; border-radius:6px;
+         font-family:"JetBrains Mono", ui-monospace, monospace; font-size:.86em; }
+  .pill { display:inline-block; background:#FFD93D; color:#0D3364; font-weight:700;
+          font-size:.72rem; padding:3px 10px; border-radius:999px; margin-bottom:14px; }
+  p { color:#F7F8F9cc; }
+  .code { margin-top:18px; padding:12px 14px; background:#141415; border-radius:12px;
+          border:1px solid #ffffff14; word-break:break-all; }
+</style></head>
+<body><main>
+  <div class="pill">NOT RUNNING LOCALLY</div>
+  <h1>The community forum is a separate application</h1>
+  <p>You were sent here by the <strong>Community</strong> button, which issues a
+     single-sign-on handoff code and redirects to the forum host.</p>
+  <p>That host is <code>${host}</code> in a local session and
+     <code>https://community.joyous.is</code> in production. Nothing is serving it
+     here, and the real deployment is a forum (Discourse) with its own SSO
+     endpoint &mdash; it cannot be reproduced by a static replay.</p>
+  ${code ? `<p>The handoff code was issued and carried through:</p>
+     <div class="code"><code>${code}</code></div>` : ''}
+  <p style="margin-top:22px">
+    <a href="http://127.0.0.1:${PORT}/products" style="color:#79C9F2">Back to the site</a>
+    &nbsp;·&nbsp;
+    Set <code>COMMUNITY_ORIGIN</code> to proxy to a real instance.
+  </p>
+</main></body></html>`
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
   const pathname = decodeURIComponent(url.pathname)
-  if (VERBOSE) console.log(`  <- ${req.method} ${pathname}`)
+  const host = (req.headers.host ?? '').split(':')[0]
+  if (VERBOSE) console.log(`  <- ${req.method} ${host}${pathname}`)
+
+  // --- the community host is a different application ---------------------
+  if (host.startsWith('community.')) {
+    if (COMMUNITY_ORIGIN) {
+      try {
+        const upstream = await fetch(COMMUNITY_ORIGIN + pathname + url.search, { method: req.method })
+        const body = Buffer.from(await upstream.arrayBuffer())
+        res.writeHead(upstream.status, {
+          'Content-Type': upstream.headers.get('content-type') ?? 'text/html',
+          'Content-Length': String(body.length),
+        })
+        res.end(body)
+      } catch (error) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' }).end(`Community proxy failed: ${error.message}`)
+      }
+      return
+    }
+    // The code rides in the fragment, so the server never sees it; read it from the
+    // Referer when a browser sends one, otherwise just explain.
+    const code = (req.headers.referer ?? '').match(/code=([A-Za-z0-9_-]+)/)?.[1] ?? ''
+    const body = Buffer.from(communityPlaceholder(req.headers.host ?? host, pathname, code))
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': String(body.length) })
+    res.end(body)
+    return
+  }
 
   // --- promo codes -------------------------------------------------------
   // Returning {} with a 200 for a promo code is a lie the client cannot act on: the
