@@ -172,7 +172,7 @@ const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
-  'fallback pages', 'insights',
+  'fallback pages', 'insights', 'storefront',
 ]
 const ranPhases = []
 
@@ -1006,6 +1006,131 @@ check('a locally placed order does not break the fee ledger', afterFees.status =
 check('the server is still alive after an undated order', (await get('/api/admin/orders')).status === 200,
   'the fatal-guard held')
 await clearCart()
+
+/* ============================================================= storefront ==== */
+
+phase('storefront', 'Storefront — banner, pop-up and seasonal effect')
+
+// The admin form and the customer storefront read the SAME values through DIFFERENT
+// field names. The admin routes answered `{}`, so every form rendered its defaults while
+// the live storefront showed something else — the strip and the box editing it
+// disagreed, and a save reached nobody.
+const bannerAdmin = await get('/api/admin/notification-banner')
+const b1 = bannerAdmin.body || {}
+check('the banner form loads real config, not defaults',
+  ['enabled', 'message', 'style', 'speed', 'fontSize', 'glow', 'shimmer', 'pulse', 'emoji', 'bold', 'uppercase']
+    .every((k) => k in b1),
+  `keys: ${Object.keys(b1).join(', ')}`)
+check('the banner has a message to show', String(b1.message || '').length > 0,
+  `${String(b1.message || '').length} chars`)
+
+const bannerPublic = await get('/api/admin/public/notification-banner')
+check('the storefront reads the SAME banner the form edits',
+  bannerPublic.body?.message === b1.message, 'admin and public agree')
+
+// Save -> the storefront must see it. Asserted through the public route, because
+// "the admin form saved" and "the customer sees it" are different claims.
+const originalMsg = b1.message
+const edited = await api('/api/admin/notification-banner', {
+  method: 'PUT',
+  body: { message: 'Smoke test announcement', style: 'promo', uppercase: false },
+})
+check('saving the banner is accepted', edited.status === 200, `HTTP ${edited.status}`)
+check('the EDIT reaches the storefront',
+  (await get('/api/admin/public/notification-banner')).body?.message === 'Smoke test announcement')
+eq('and the style came through too', (await get('/api/admin/notification-banner')).body?.style, 'promo')
+
+// An enabled banner with no message is on-but-invisible: the one combination that
+// wastes an admin's time, so it is refused rather than stored.
+const blank = await api('/api/admin/notification-banner', { method: 'PUT', body: { message: '   ' } })
+check('an enabled banner with no message is refused', blank.status === 422,
+  `HTTP ${blank.status} ${blank.body?.error || ''}`)
+const badEnum = await api('/api/admin/notification-banner', { method: 'PUT', body: { style: 'sparkly' } })
+check('an unknown style is refused with the allowed list', badEnum.status === 422,
+  `${badEnum.body?.error || ''}`)
+await api('/api/admin/notification-banner', { method: 'PUT', body: { message: originalMsg, style: b1.style, uppercase: b1.uppercase } })
+eq('and the edit can be put back', (await get('/api/admin/notification-banner')).body?.message, originalMsg)
+
+// ---- the effect ----------------------------------------------------------
+const eff = await get('/api/admin/particle-effect')
+check('the effect form loads real config',
+  ['enabled', 'type', 'emojis', 'speed', 'density'].every((k) => k in (eff.body || {})),
+  `keys: ${Object.keys(eff.body || {}).join(', ')}`)
+const effOn = await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: true, type: 'hearts', density: 'high' } })
+check('the effect can be switched on', effOn.status === 200 && effOn.body?.type === 'hearts',
+  `type=${effOn.body?.type}`)
+check('the storefront sees the effect',
+  (await get('/api/admin/public/particle-effect')).body?.type === 'hearts')
+const effBad = await api('/api/admin/particle-effect', { method: 'PUT', body: { type: 'locusts' } })
+check('an unknown effect type is refused', effBad.status === 422, `HTTP ${effBad.status}`)
+await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: eff.body.enabled, type: eff.body.type, density: eff.body.density } })
+
+// ---- the pop-up and its featured list ------------------------------------
+const sp = await get('/api/admin/spotlight/settings')
+check('the pop-up form uses the spotlight* field names',
+  ['spotlightEnabled', 'spotlightTitle', 'spotlightAnnouncement', 'spotlightNewBadgeDays', 'spotlightDelayMs']
+    .every((k) => k in (sp.body || {})),
+  `keys: ${Object.keys(sp.body || {}).join(', ')}`)
+check('spotlightNewBadgeDays is a real window, not a placeholder',
+  Number(sp.body?.spotlightNewBadgeDays) > 0, `${sp.body?.spotlightNewBadgeDays} days`)
+
+// The featured list is a BARE ARRAY. A wrapper object made it render as nothing.
+const feat0 = await get('/api/admin/spotlight/products')
+check('the featured list is a bare array', Array.isArray(feat0.body),
+  `${Array.isArray(feat0.body) ? feat0.body.length : typeof feat0.body} entries`)
+const search = await get('/api/admin/spotlight/search-products?q=bpc')
+check('product search returns matches', Array.isArray(search.body) && search.body.length > 0,
+  `${(search.body || []).length} hit(s)`)
+
+const pick = (await get('/api/admin/products')).body.products.filter((x) => x.__seed === true).slice(0, 2)
+if (pick.length === 2) {
+  await post(`/api/admin/spotlight/products/${pick[0].slug}`, {})
+  const two = await post(`/api/admin/spotlight/products/${pick[1].slug}`, {})
+  eq('featuring a product adds it', (await get('/api/admin/spotlight/products')).body.length, 2)
+  check('feature is reflected on the customer pop-up',
+    (await get('/api/spotlight')).body.products.some((x) => x.name === pick[0].name),
+    'the featured product reached /api/spotlight')
+  // The customer shape uses DIFFERENT names from the admin one — both must be present.
+  const pub = (await get('/api/spotlight')).body
+  check('the customer pop-up carries enabled/title/announcement/delayMs/products',
+    ['enabled', 'title', 'announcement', 'delayMs', 'products'].every((k) => k in pub),
+    `keys: ${Object.keys(pub).join(', ')}`)
+  await api(`/api/admin/spotlight/products/${pick[0].slug}`, { method: 'DELETE' })
+  eq('unfeaturing removes it', (await get('/api/admin/spotlight/products')).body.length, 1)
+  await api(`/api/admin/spotlight/products/${pick[1].slug}`, { method: 'DELETE' })
+  eq('the featured list can be emptied', (await get('/api/admin/spotlight/products')).body.length, 0)
+}
+
+// A reorder must not silently ADD: only already-featured ids may be reordered.
+const r1 = await post(`/api/admin/spotlight/products/${pick[0].slug}`, {})
+const reorder = await api('/api/admin/spotlight/products/reorder', {
+  method: 'PUT', body: { productIds: [pick[0].id, 'not-a-real-product-id'] },
+})
+check('reorder cannot smuggle in an unfeatured id',
+  reorder.status === 200 && !(reorder.body?.products || []).includes('not-a-real-product-id'),
+  JSON.stringify(reorder.body?.products))
+await api(`/api/admin/spotlight/products/${pick[0].slug}`, { method: 'DELETE' })
+
+// ---- it persists ---------------------------------------------------------
+// These are settings someone edits on purpose, so unlike the fixtures they survive a
+// restart. A file is the difference between "I saved my banner" and "I saved it until
+// the next restart".
+await api('/api/admin/notification-banner', { method: 'PUT', body: { message: 'persisted-probe-1234' } })
+const file = await import('node:fs')
+const cfgPath = new URL('../storefront-config.json', import.meta.url).pathname
+const onDisk = JSON.parse(file.readFileSync(cfgPath, 'utf8'))
+check('the save is written to disk', onDisk.banner?.message === 'persisted-probe-1234',
+  `banner.message=${JSON.stringify(onDisk.banner?.message)}`)
+// Re-read through the same validator the server uses at boot, so a hand-edited file
+// cannot inject a value the form would have refused.
+const cfg = await import('../storefront-config.mjs')
+const reloaded = cfg.readStorefrontConfig(cfgPath)
+check('reloading re-validates and keeps the value', reloaded.banner.message === 'persisted-probe-1234',
+  `reloaded=${JSON.stringify(reloaded.banner.message)}`)
+const bad = cfg.validateBanner({ style: 'nope' }, cfg.DEFAULT_BANNER)
+check('the loader refuses an invalid style from a hand-edited file', bad.ok === false,
+  bad.errors.join('; '))
+await api('/api/admin/notification-banner', { method: 'PUT', body: { message: originalMsg } })
 
 assertAllPhasesRan()
 

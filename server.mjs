@@ -27,6 +27,11 @@ import {
   seedCustomers, seedOrders, seedTickets, seedStockedProducts, seedCampaigns,
   applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
 } from './admin-seed.mjs'
+import {
+  readStorefrontConfig, saveStorefrontConfig,
+  validateBanner, validateEffect, validateSpotlight,
+  spotlightForAdmin, spotlightForPublic,
+} from './storefront-config.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -70,6 +75,14 @@ const seededOrders = SEED_FIXTURES ? seedOrders() : []
  * badge other than "orders closed" is ever visible.
  */
 const seededCampaigns = SEED_FIXTURES ? seedCampaigns() : { groupbuys: [], sales: [] }
+
+/**
+ * The storefront's banner / pop-up / effect. These are EDITED ON PURPOSE, so unlike the
+ * fixtures they persist to disk. The admin forms and the customer storefront read the
+ * same values through different field names.
+ */
+const STOREFRONT_FILE = join(HERE, 'storefront-config.json')
+const storefront = readStorefrontConfig(STOREFRONT_FILE)
 /** Every order the admin sees: seeded fixtures plus anything placed this session. */
 const allOrders = () => [...orders, ...seededOrders]
 
@@ -729,6 +742,23 @@ const server = createServer({
       availableStock: wireStock(v.availableStock ?? v.stockQty),
     })),
   })
+
+  // The customer storefront's pop-up. Reads the SAME config the admin form writes, so
+  // saving the pop-up actually changes what a customer sees — before this it was served
+  // from a recorded sample and an edit reached nobody.
+  if (pathname === '/api/spotlight' && req.method === 'GET') {
+    const featuredIds = storefront.spotlight.products ?? []
+    const products = featuredIds
+      .map((id) => catalogProducts.find((x) => x.id === id || x.slug === id))
+      .filter(Boolean)
+      .map((prod) => ({
+        id: prod.id, name: prod.name, slug: prod.slug,
+        pricePerUnit: prod.pricePerUnit, requiredTier: prod.requiredTier,
+        image: (prod.images ?? [])[0]?.url ?? null, soldOut: stockFor(prod).soldOut,
+      }))
+    sendJson(res, 200, spotlightForPublic(storefront.spotlight, products))
+    return
+  }
 
   // A single campaign, so the admin's "Preview as customer" link and the customer
   // group-buy page can both open a SEEDED campaign. Recorded ones are served from their
@@ -1427,8 +1457,21 @@ const server = createServer({
       return
     }
 
+    // Paths whose LIVE value must beat their recorded sample.
+    //
+    // The storefront-banner and effect settings are EDITABLE, and the admin routes
+    // above write them. But a recorded sample file exists for the same path
+    // (`api_admin_public_notification-banner.json`), and this generic replay matched
+    // before the dedicated handler could — so an edit was saved, read back correctly by
+    // the admin form, and then ignored by the customer storefront, which kept getting
+    // the sample. Saving appeared to work and changed nothing.
+    const LIVE_NOT_RECORDED = new Set([
+      '/api/admin/public/notification-banner',
+      '/api/admin/public/particle-effect',
+    ])
+
     const file = sampleFileFor(pathname)
-    if (file && existsSync(file)) {
+    if (file && existsSync(file) && !LIVE_NOT_RECORDED.has(pathname)) {
       const body = await readFile(file)
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(body)
@@ -1844,6 +1887,126 @@ const server = createServer({
         }))
         console.log(`  [admin] /admin/orders -> ${withState.length} order(s) (${seededOrders.length} seeded)`)
         sendJson(res, 200, { orders: withState, total: withState.length, page: 1, pages: 1 })
+        return
+      }
+
+      // --- storefront: banner, pop-up, effect -------------------------------
+      // Two routes per setting: an /admin one the EDIT FORM loads, and an
+      // /admin/public one the CUSTOMER storefront loads. The admin ones answered `{}`,
+      // so every form rendered its defaults while the live storefront showed something
+      // else — the strip and the box that edits it disagreed. Both now read the same
+      // stored values, and every write persists.
+      const saveStorefront = () => saveStorefrontConfig(STOREFRONT_FILE, storefront)
+
+      if (pathname === '/api/admin/notification-banner' && req.method === 'GET') {
+        sendJson(res, 200, storefront.banner)
+        return
+      }
+      if (pathname === '/api/admin/notification-banner' && (req.method === 'PUT' || req.method === 'PATCH')) {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const check2 = validateBanner(body, storefront.banner)
+        if (!check2.ok) { sendJson(res, 422, { error: check2.errors.join('; '), errors: check2.errors }); return }
+        storefront.banner = check2.value
+        saveStorefront()
+        console.log(`  [storefront] banner: enabled=${storefront.banner.enabled} style=${storefront.banner.style}`)
+        sendJson(res, 200, storefront.banner)
+        return
+      }
+      if (pathname === '/api/admin/public/notification-banner' && req.method === 'GET') {
+        // The storefront only shows an ENABLED banner with a message.
+        sendJson(res, 200, storefront.banner)
+        return
+      }
+
+      if (pathname === '/api/admin/particle-effect' && req.method === 'GET') {
+        sendJson(res, 200, storefront.effect)
+        return
+      }
+      if (pathname === '/api/admin/particle-effect' && (req.method === 'PUT' || req.method === 'PATCH')) {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const check3 = validateEffect(body, storefront.effect)
+        if (!check3.ok) { sendJson(res, 422, { error: check3.errors.join('; '), errors: check3.errors }); return }
+        storefront.effect = check3.value
+        saveStorefront()
+        console.log(`  [storefront] effect: enabled=${storefront.effect.enabled} type=${storefront.effect.type}`)
+        sendJson(res, 200, storefront.effect)
+        return
+      }
+      if (pathname === '/api/admin/public/particle-effect' && req.method === 'GET') {
+        sendJson(res, 200, storefront.effect)
+        return
+      }
+
+      if (pathname === '/api/admin/spotlight/settings' && req.method === 'GET') {
+        sendJson(res, 200, spotlightForAdmin(storefront.spotlight))
+        return
+      }
+      if (pathname === '/api/admin/spotlight/settings' && (req.method === 'PUT' || req.method === 'PATCH')) {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const check4 = validateSpotlight(body, storefront.spotlight)
+        if (!check4.ok) { sendJson(res, 422, { error: check4.errors.join('; '), errors: check4.errors }); return }
+        storefront.spotlight = check4.value
+        saveStorefront()
+        console.log(`  [storefront] spotlight: enabled=${storefront.spotlight.enabled} badgeDays=${storefront.spotlight.newBadgeDays}`)
+        sendJson(res, 200, spotlightForAdmin(storefront.spotlight))
+        return
+      }
+
+      // Featured products for the pop-up. A BARE ARRAY, not `{products: [...]}`: the
+      // page passes `y.data || []` straight to its renderer, so a wrapper object made
+      // the featured list render as nothing.
+      if (pathname === '/api/admin/spotlight/products' && req.method === 'GET') {
+        const list = (storefront.spotlight.products ?? [])
+          .map((id) => catalogProducts.find((x) => x.id === id || x.slug === id))
+          .filter(Boolean)
+          .map((prod) => ({
+            id: prod.id, name: prod.name, slug: prod.slug, pricePerUnit: prod.pricePerUnit,
+            requiredTier: prod.requiredTier, isNew: prod.isNew === true,
+            image: (prod.images ?? [])[0]?.url ?? null,
+          }))
+        sendJson(res, 200, list)
+        return
+      }
+      // Search for a product to feature. A bare array again.
+      if (pathname === '/api/admin/spotlight/search-products' && req.method === 'GET') {
+        const q3 = (new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`).searchParams.get('q') ?? '').toLowerCase()
+        const hits = q3.length < 2 ? [] : catalogProducts
+          .filter((x) => x.archived !== true && `${x.name} ${x.slug}`.toLowerCase().includes(q3))
+          .slice(0, 20)
+          .map((prod) => ({
+            id: prod.id, name: prod.name, slug: prod.slug, pricePerUnit: prod.pricePerUnit,
+            requiredTier: prod.requiredTier, isNew: prod.isNew === true,
+            image: (prod.images ?? [])[0]?.url ?? null,
+          }))
+        sendJson(res, 200, hits)
+        return
+      }
+      const featureMatch = new RegExp('^/api/admin/spotlight/products/([^/]+)$').exec(pathname)
+      if (featureMatch && (req.method === 'POST' || req.method === 'DELETE')) {
+        const ref = decodeURIComponent(featureMatch[1])
+        const prod = catalogProducts.find((x) => x.id === ref || x.slug === ref)
+        if (!prod) { sendJson(res, 404, { error: 'No such product.', ref }); return }
+        const current = new Set(storefront.spotlight.products ?? [])
+        if (req.method === 'POST') current.add(prod.id)
+        else current.delete(prod.id)
+        storefront.spotlight.products = [...current]
+        saveStorefront()
+        console.log(`  [storefront] spotlight ${req.method === 'POST' ? 'featured' : 'unfeatured'} ${prod.slug} (${storefront.spotlight.products.length} total)`)
+        sendJson(res, 200, { ok: true, products: storefront.spotlight.products })
+        return
+      }
+      if (pathname === '/api/admin/spotlight/products/reorder' && req.method === 'PUT') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const ids = Array.isArray(body.productIds) ? body.productIds : (Array.isArray(body.ids) ? body.ids : [])
+        const known = new Set((storefront.spotlight.products ?? []))
+        // Only reorder what is already featured; a reorder must not silently ADD.
+        storefront.spotlight.products = ids.filter((id) => known.has(id))
+        saveStorefront()
+        sendJson(res, 200, { ok: true, products: storefront.spotlight.products })
         return
       }
 
