@@ -122,6 +122,12 @@ function buildSeedCart() {
   return items
 }
 
+/** Back-in-stock subscriptions, counted for the dashboard tile. */
+let stockSubscriptions = 0
+try {
+  stockSubscriptions = (JSON.parse(readFileSync(join(SAMPLES, 'api_stock-notifications.json'), 'utf8')).subscriptions ?? []).length
+} catch { /* leave zero */ }
+
 /** The group-buy campaigns, for hydrating group-buy cart lines. */
 let catalogCampaigns = []
 try {
@@ -615,6 +621,108 @@ const server = createServer(async (req, res) => {
     // The shapes below are derived from the call sites - they are NOT recorded data.
     // Every one is empty, so pages render their own empty states rather than crashing.
     if (pathname.startsWith('/api/admin/')) {
+      // --- derived admin data ----------------------------------------------
+      // No /api/admin/* response was ever observable: the live site refuses a
+      // non-admin session server-side. But the DATA is not invented - it comes from
+      // the recorded catalogue, regrouped into the shape the admin pages read.
+      //
+      // DERIVED FROM THE RECORDING:  products, stats.total, stats.archived,
+      //                              pagination.total, categories
+      // COMPUTED:                    stats.lowStock  (availableStock < 10)
+      //                              stockQty        (sum of variant stock)
+      //                              sku             (code from the product image name,
+      //                                               e.g. JYS-CAP-0004 — the only SKU
+      //                                               hint in the data; 50 of 61 have one)
+      // ABSENT IN THE DATA:          archived (no such field, so false),
+      //                              isVisible (no such field, so true)
+      //
+      // Flagged so it is never mistaken for a recorded response.
+      if (pathname === '/api/admin/products' && req.method === 'GET') {
+        const SKU = /\/(JYS?-[A-Z]+-\d{4})-/
+        const shape = (p) => {
+          const variants = p.variants ?? []
+          const codes = variants.flatMap((v) => (v.images ?? []).map((i) => i.url))
+            .concat((p.images ?? []).map((i) => i.url))
+            .map((u) => u.match(SKU)?.[1]).filter(Boolean)
+          const stockQty = variants.reduce((n, v) => n + (v.availableStock ?? v.stockQty ?? 0), 0)
+          return {
+            ...p,
+            sku: codes[0] ?? null,
+            variants,
+            stockQty,
+            isVisible: true,
+            archived: false,
+            categoryName: p.category?.name ?? p.category ?? null,
+          }
+        }
+        const all = catalogProducts.map(shape)
+        const low = all.filter((p) => p.stockQty > 0 && p.stockQty < 10)
+        const body = {
+          __derived: 'assembled from the recorded catalogue; no admin response was observed',
+          products: all,
+          stats: {
+            total: all.length,
+            lowStock: low.length,
+            archived: all.filter((p) => p.archived).length,
+          },
+          pagination: { page: 1, pages: 1, total: all.length },
+        }
+        console.log(`  [admin] /admin/products -> ${all.length} products (derived from the catalogue)`)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify(body))
+        return
+      }
+
+      // Campaign lists. Both the group-buy and sale pages are the SAME component
+      // (CampaignList) driven by a config; the config sets `api` and `listKey`:
+      //
+      //   groupbuy -> { api: '/admin/groupbuys', listKey: 'campaigns' }
+      //   sale     -> { api: '/admin/sales',     listKey: 'sales'     }
+      //
+      // and reads  i[a.listKey] || []  and  i.statsAll || i.stats.
+      // The campaign rows are the RECORDED campaigns, statuses already in the
+      // vocabulary the page switches on (CLOSED, SHIPPING_TO_CUSTOMERS, ...).
+      if (pathname === '/api/admin/users' && req.method === 'GET') {
+        // The only account the recording contains - already sanitised, so no real
+        // details are involved. Served so the directory is not empty and the seeded
+        // admin appears as a row.
+        const u = JSON.parse(await readFile(join(SAMPLES, 'api_auth_me.json'), 'utf8')).user
+        let addr = null
+        try {
+          addr = (JSON.parse(await readFile(join(SAMPLES, 'api_users_addresses.json'), 'utf8')).addresses ?? [])[0] ?? null
+        } catch { /* none */ }
+        const row = { ...u, address: addr, addresses: addr ? [addr] : [] }
+        console.log('  [admin] /admin/users -> 1 account (recorded, sanitised)')
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ users: [row], total: 1, page: 1, pages: 1 }))
+        return
+      }
+
+      if ((pathname === '/api/admin/groupbuys' || pathname === '/api/admin/sales') && req.method === 'GET') {
+        const isGb = pathname.endsWith('groupbuys')
+        const rows = isGb ? catalogCampaigns : []
+        const counts = rows.reduce((acc, c) => {
+          acc[c.status] = (acc[c.status] ?? 0) + 1
+          return acc
+        }, {})
+        const body = {
+          __derived: 'recorded campaigns regrouped for the admin list',
+          [isGb ? 'campaigns' : 'sales']: rows,
+          statsAll: { total: rows.length, byStatus: counts },
+        }
+        console.log(`  [admin] ${pathname} -> ${rows.length} row(s) (recorded campaigns)`)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify(body))
+        return
+      }
+
+      if (pathname === '/api/admin/categories' && req.method === 'GET') {
+        const names = [...new Set(catalogProducts.map((p) => p.category?.name ?? p.category).filter(Boolean))]
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(names.map((n, i) => ({ id: `cat-${i + 1}`, name: n, slug: String(n).toLowerCase(), productCount: catalogProducts.filter((p) => (p.category?.name ?? p.category) === n).length }))))
+        return
+      }
+
       const EMPTY_ARRAY = new Set([
         '/api/admin/spotlight/products',
         '/api/admin/categories', '/api/admin/collections', '/api/admin/tags',
@@ -644,9 +752,28 @@ const server = createServer(async (req, res) => {
           payments: { configured: false },
         },
         '/api/admin/dashboard/today': { delivered: 0, shipped: 0, newOrders: 0 },
+        // Each count is taken from the recorded source that would feed it, so a zero
+        // means the recording is empty rather than that a number was invented:
+        //   backInStockWaiting <- stock-notifications subscriptions
+        //   needsReply         <- support tickets total
+        //   ordersToShip, awaitingPayment, todaysPayments, todaysSales <- orders (empty)
+        //   awaitingApproval   <- users pending approval (no admin user list recorded)
+        // KEYS MUST MATCH THE COMPONENT, not the obvious names. AdminHome renders
+        //   se.map(a => n[a.key])       // n is this response
+        // where its key list is:
+        //   ordersToShip, paymentsToday, needsReply, awaitingApproval,
+        //   backInStock, salesToday
+        // plus `awaitingPayment`, read separately for the header line. Serving
+        // `todaysPayments`/`backInStockWaiting`/`todaysSales` meant three tiles looked
+        // up keys that did not exist and silently printed 0.
         '/api/admin/dashboard/counts': {
-          ordersToShip: 0, todaysPayments: 0, needsReply: 0, awaitingApproval: 0,
-          backInStockWaiting: 0, todaysSales: 0, awaitingPayment: 0,
+          ordersToShip: 0,
+          paymentsToday: 0,
+          needsReply: 0,
+          awaitingApproval: 0,
+          backInStock: stockSubscriptions,
+          salesToday: 0,
+          awaitingPayment: 0,
         },
         '/api/admin/spotlight/settings': { enabled: false, products: [] },
       }
