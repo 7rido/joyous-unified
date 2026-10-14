@@ -19,6 +19,7 @@
 
 import { createServer } from 'node:http'
 import { wireOrderMilestones, orderEvents } from './order-emails.mjs'
+import { findPromo, discountFor, PROMO_CODES } from './promo-codes.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -277,6 +278,26 @@ function resolveShippingAddress(addressId) {
   }
 }
 
+/**
+ * The authoritative subtotal: every cart line priced through resolveLinePrice.
+ *
+ * A percentage discount must be computed against a subtotal the caller cannot choose.
+ * The client does send its own `items` array, but 10% of a claimed $10,000 subtotal is
+ * a very different number from 10% of the real one, so it is ignored entirely.
+ */
+function cartSubtotal() {
+  return cart.reduce((sum, line) => {
+    const priced = resolveLinePrice(line)
+    const gi = line.groupBuyItem ?? {}
+    const v = line.variant ?? {}
+    const prod = line.product ?? {}
+    const unit = priced.ok
+      ? priced.unitPrice
+      : (gi.pricePerUnit ?? v.pricePerUnit ?? prod.pricePerUnit ?? 0)
+    return sum + unit * (line.quantity ?? 1)
+  }, 0)
+}
+
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
 const wireStock = (n) => (n === Infinity ? UNLIMITED_STOCK : n)
 
@@ -373,6 +394,9 @@ function buildSeedCart() {
 
 /** Orders placed locally through the checkout flow. In memory only. */
 const orders = []
+
+/** The promo the customer applied, if any. Cleared when the cart empties. */
+let appliedPromo = null
 
 /** The recorded (sanitised) account, used to attribute locally placed orders. */
 let accountUser = null
@@ -656,18 +680,23 @@ const server = createServer(async (req, res) => {
       // The single place a total is computed. Uses the SAME resolver as the order
       // lines and the checkout summary, so the number shown and the number charged
       // cannot diverge - which is exactly how the packPrice forgery worked.
-      total: cart.reduce((sum, line) => {
-        const v = line.variant ?? {}; const prod = line.product ?? {}; const gi = line.groupBuyItem ?? {}
-        const priced = resolveLinePrice(line)
-        const unit = priced.ok
-          ? priced.unitPrice
-          : (gi.pricePerUnit ?? v.pricePerUnit ?? prod.pricePerUnit ?? 0)
-        return sum + unit * (line.quantity ?? 1)
-      }, 0),
+      subtotal: cartSubtotal(),
+      total: (() => {
+        const sub = cartSubtotal()
+        const promo = appliedPromo ? PROMO_CODES[appliedPromo.code] : null
+        const off = promo ? discountFor(promo, sub).discountAmount : 0
+        return Math.max(sub - off, 0)
+      })(),
       createdAt: new Date().toISOString(),
       // OrderDetail reads these flat money fields individually, so each must be a
       // number - an absent one crashes it on .toFixed.
-      subtotal: 0, discountAmount: 0, shippingCost: 0, insuranceCost: 0,
+      discountCode: appliedPromo?.code ?? null,
+      discountAmount: (() => {
+        const promo = appliedPromo ? PROMO_CODES[appliedPromo.code] : null
+        return promo ? discountFor(promo, cartSubtotal()).discountAmount : 0
+      })(),
+      freeShippingApplied: !!(appliedPromo && PROMO_CODES[appliedPromo.code]?.freeShipping),
+      shippingCost: 0, insuranceCost: 0,
       coaCost: 0, adminFee: 0, paymentMethodFee: 0,
       coas: [], tickets: [], updates: [],
       // The admin list shows Customer from these; without them the row reads "Unknown".
@@ -679,7 +708,8 @@ const server = createServer(async (req, res) => {
       email: accountUser?.email ?? null,
       __local: 'created by the local replay; not a real order',
     }
-    order.subtotal = order.total
+    // subtotal and total are already correct; totalAmount mirrors total for
+    // OrderDetail, which reads the flat money fields individually.
     order.totalAmount = order.total
     orders.push(order)
 
@@ -706,6 +736,7 @@ const server = createServer(async (req, res) => {
     }
 
     cart = []                    // a placed order empties the cart
+    appliedPromo = null
     console.log(`  [order] created ${order.orderNumber} with ${order.items.length} item(s)`)
 
     // Milestone emitted AFTER the order and its stock changes are settled, so a
@@ -752,17 +783,36 @@ const server = createServer(async (req, res) => {
   }
 
   // --- promo codes -------------------------------------------------------
-  // Returning {} with a 200 for a promo code is a lie the client cannot act on: the
-  // request "succeeds" and there is no valid discount in the body. The client reads
-  // t.discount.code, throws, and shows a generic failure. A real API rejects an
-  // unknown code with a 4xx and a message, so this does the same - the recorded
-  // samples contain no promo, so every code is genuinely invalid here.
+  // The client posts { code, items } and destructures `t.discount.{code,name,
+  // discountAmount,freeShipping}`. On failure it reads `error.response.data.error`
+  // and shows that verbatim, so the sentence the customer sees is decided in
+  // promo-codes.mjs, not in the bundle.
+  //
+  // The subtotal is recomputed HERE from the catalogue via resolveLinePrice, never
+  // taken from the request, so a forged `items` array cannot inflate a percentage
+  // discount. That matters more for a percentage than a flat amount: 10% of a
+  // claimed $10,000 subtotal is a very different number.
   if (pathname === '/api/checkout/validate-promo' && req.method === 'POST') {
     let body = {}
     try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
-    console.log(`  [checkout] validate-promo "${body.code ?? ''}" -> 400 (no promo recorded)`)
-    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify({ error: 'That code didn\'t work.' }))
+    const found = findPromo(body.code)
+    if (!found.ok) {
+      console.log(`  [promo] "${body.code ?? ''}" -> 400 ${found.error}`)
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: found.error }))
+      return
+    }
+    const subtotal = cartSubtotal()
+    const discount = discountFor(found.promo, subtotal)
+    // Remembered so the ORDER path can honour the same code. Without this the
+    // discount applied to the display only and the customer was charged the
+    // undiscounted total - the same show-one-number-charge-another shape as the
+    // packPrice bug.
+    appliedPromo = { code: found.code, freeShipping: !!found.promo.freeShipping }
+    const how = found.promo.percentOff ? `${found.promo.percentOff}% off` : 'free shipping'
+    console.log(`  [promo] "${found.code}" -> ${how}, -$${discount.discountAmount.toFixed(2)} on $${subtotal.toFixed(2)}`)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ discount }))
     return
   }
 
