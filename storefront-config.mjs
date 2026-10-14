@@ -58,12 +58,32 @@ export const DEFAULT_SPOTLIGHT = {
   products: [],
 }
 
-export const BANNER_STYLES = ['info', 'success', 'warning', 'danger', 'promo']
+/**
+ * THE OPTION LISTS COME FROM THE FORM THAT SENDS THEM, NOT FROM MEMORY.
+ *
+ * These were written by hand and did not match the controls in
+ * `dist/assets/StorefrontPage-*.js`, so the server refused values the UI offers. The
+ * defaults happened to be valid (Density `medium`, Pulse `none`), so opening the tab and
+ * saving worked, and only picking Light / Heavy / Subtle produced a 422 — with the
+ * Effects tab animating its own local preview the whole time, which made a rejected save
+ * look like a successful one.
+ *
+ *   bundle io = ['info','success','warning','promo']   (no 'danger')
+ *   bundle ao = ['slow','medium','fast']
+ *   bundle lo = ['small','medium','large']
+ *   bundle co = ['none','subtle','strong']             (was 'soft')
+ *   bundle Tl = ['slow','medium','fast']
+ *   bundle Ll = ['light','medium','heavy']             (was 'low'/'high')
+ *
+ * A server that validates an enum must accept exactly what its client sends. Keep these
+ * in step with the option lists in the Storefront page; the smoke suite asserts it.
+ */
+export const BANNER_STYLES = ['info', 'success', 'warning', 'promo']
 export const SPEEDS = ['slow', 'medium', 'fast']
 export const FONT_SIZES = ['small', 'medium', 'large']
-export const PULSES = ['none', 'soft', 'strong']
-export const EFFECT_TYPES = ['snow', 'hearts', 'stars', 'confetti', 'leaves', 'none']
-export const DENSITIES = ['low', 'medium', 'high']
+export const PULSES = ['none', 'subtle', 'strong']
+export const EFFECT_TYPES = ['snow', 'hearts', 'stars', 'confetti', 'leaves', 'custom', 'none']
+export const DENSITIES = ['light', 'medium', 'heavy']
 
 const clip = (v, n) => String(v ?? '').slice(0, n)
 

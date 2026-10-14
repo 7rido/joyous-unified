@@ -184,7 +184,7 @@ const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
-  'fallback pages', 'insights', 'storefront', 'discounts', 'newsletter',
+  'fallback pages', 'insights', 'storefront', 'discounts', 'newsletter', 'option enums',
 ]
 const ranPhases = []
 
@@ -1068,7 +1068,10 @@ const eff = await get('/api/admin/particle-effect')
 check('the effect form loads real config',
   ['enabled', 'type', 'emojis', 'speed', 'density'].every((k) => k in (eff.body || {})),
   `keys: ${Object.keys(eff.body || {}).join(', ')}`)
-const effOn = await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: true, type: 'hearts', density: 'high' } })
+// NOTE the density value: 'heavy', which is what the FORM offers. This line used to
+// send 'high' — a value I had invented — so it was asserting my own bug and passing
+// while every non-default save in the real UI was being refused.
+const effOn = await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: true, type: 'hearts', density: 'heavy' } })
 check('the effect can be switched on', effOn.status === 200 && effOn.body?.type === 'hearts',
   `type=${effOn.body?.type}`)
 check('the storefront sees the effect',
@@ -1383,6 +1386,70 @@ check('a draft can be deleted', !(await get('/api/admin/newsletter/drafts')).bod
 
 // ---- the subscriber I added and the drafts are cleaned up ----------------
 await api(`/api/admin/newsletter/subscribers/${added.body.subscriber.id}`, { method: 'DELETE' })
+
+/* ============================================================ option enums ==== */
+
+phase('option enums', 'Server enums must accept what the form sends')
+
+// THE BUG THIS EXISTS TO CATCH: the option lists were written by hand instead of read
+// from the form, so the server refused values the UI offers. The defaults happened to
+// be valid, so opening a tab and saving worked and only non-default picks failed —
+// while the Effects tab animated its own local preview, making a rejected save LOOK
+// successful. A validator must accept exactly what its client sends.
+//
+// The expected lists are the OPTION LISTS IN THE BUNDLE. They are pinned here as
+// constants (a test cannot click every control cheaply), and the bundle is grepped for
+// the same values so a UI change that is not mirrored in the server fails loudly.
+const OPTION_SETS = {
+  bannerStyle: ['info', 'success', 'warning', 'promo'],
+  pulse: ['none', 'subtle', 'strong'],
+  speed: ['slow', 'medium', 'fast'],
+  fontSize: ['small', 'medium', 'large'],
+  density: ['light', 'medium', 'heavy'],
+}
+
+// 1. the server must ACCEPT every value the form offers
+for (const [field, values] of Object.entries(OPTION_SETS)) {
+  const route = field === 'density' ? '/api/admin/particle-effect' : '/api/admin/notification-banner'
+  const bad = []
+  for (const v of values) {
+    const r = await api(route, { method: 'PUT', body: { [field]: v } })
+    if (r.status !== 200) bad.push(`${v}=${r.status}`)
+  }
+  check(`every ${field} the form offers is accepted`, bad.length === 0,
+    bad.length ? bad.join(', ') : `${values.length} value(s) accepted`)
+}
+
+// 2. and must still REFUSE a value outside the set, or the check above is vacuous
+for (const [field, values] of Object.entries({ density: OPTION_SETS.density, pulse: OPTION_SETS.pulse })) {
+  const route = field === 'density' ? '/api/admin/particle-effect' : '/api/admin/notification-banner'
+  const r = await api(route, { method: 'PUT', body: { [field]: 'definitely-not-valid' } })
+  check(`an unknown ${field} is still refused`, r.status === 422, `HTTP ${r.status}`)
+}
+
+// 3. the bundle must agree with the pinned lists, so a UI change that is not mirrored
+//    in the server fails here rather than in production
+const assets = new URL('../dist/assets/', import.meta.url).pathname
+const fsMod = await import('node:fs')
+const storefrontChunk = fsMod.readdirSync(assets).find((f) => f.startsWith('StorefrontPage-'))
+const chunkSrc = storefrontChunk ? fsMod.readFileSync(assets + storefrontChunk, 'utf8') : ''
+if (!chunkSrc) {
+  skip('the bundle option lists can be cross-checked', 'StorefrontPage chunk not found')
+} else {
+  const groups = [...chunkSrc.matchAll(/(\w+)=\[\{value:"([^\]]{0,400}?)\}\]/g)]
+    .map((m) => [...m[0].matchAll(/value:"([^"]+)"/g)].map((x) => x[1]))
+    .filter((v) => v.length > 1 && v.length <= 8)
+  const flat = new Set(groups.flat())
+  const missingFromBundle = Object.values(OPTION_SETS).flat().filter((v) => !flat.has(v))
+  check('every pinned enum value still exists as an option in the bundle',
+    missingFromBundle.length === 0,
+    missingFromBundle.length ? `no longer offered: ${missingFromBundle.join(', ')}` : 'all present in the form')
+  eq('the bundle offers the same number of option groups', groups.length, 6)
+}
+
+// 4. restore the shipped defaults so this phase leaves no trace
+await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: false, type: 'snow', speed: 'medium', density: 'medium', emojis: '❄,❅,❆' } })
+await api('/api/admin/notification-banner', { method: 'PUT', body: { style: 'info', pulse: 'none', speed: 'slow', fontSize: 'large' } })
 
 assertAllPhasesRan()
 
