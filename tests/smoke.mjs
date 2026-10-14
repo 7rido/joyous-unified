@@ -185,6 +185,7 @@ const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
   'fallback pages', 'insights', 'storefront', 'discounts', 'newsletter', 'option enums',
+  'community api',
 ]
 const ranPhases = []
 
@@ -1450,6 +1451,69 @@ if (!chunkSrc) {
 // 4. restore the shipped defaults so this phase leaves no trace
 await api('/api/admin/particle-effect', { method: 'PUT', body: { enabled: false, type: 'snow', speed: 'medium', density: 'medium', emojis: '❄,❅,❆' } })
 await api('/api/admin/notification-banner', { method: 'PUT', body: { style: 'info', pulse: 'none', speed: 'slow', fontSize: 'large' } })
+
+/* ======================================================== community api ==== */
+
+phase('community api', 'Community — local API substitution')
+
+// The forum's client is served verbatim at community.localhost:4400 and its axios
+// baseURL is "/api/community", so this is a SAME-ORIGIN substitution: no client change,
+// no CORS, no proxy. The contract below was read off the bundle and confirmed against
+// the live API, which returns {"member": null} when signed out — not a 401.
+const meOut = await get('/api/community/auth/me')
+check('auth/me returns the observed shape when signed out',
+  meOut.status === 200 && meOut.body && 'member' in meOut.body && meOut.body.member === null,
+  JSON.stringify(meOut.body))
+
+// Every endpoint must be JSON. Serving HTML here is the bug that broke the client:
+// it parses the body as JSON and dies on '<'.
+check('community endpoints answer JSON, never the SPA shell',
+  meOut.status === 200 && typeof meOut.body === 'object',
+  `content parsed as ${typeof meOut.body}`)
+
+const badLogin = await post('/api/community/auth/login', { email: 'nobody@example.com', password: 'x' })
+check('an unknown address is refused without revealing whether it exists',
+  badLogin.status === 401 && /don't match|does not match/i.test(badLogin.body?.error || ''),
+  `HTTP ${badLogin.status}`)
+const emptyLogin = await post('/api/community/auth/login', { email: '', password: '' })
+check('an empty sign-in is refused', emptyLogin.status === 400, `HTTP ${emptyLogin.status}`)
+
+// The session is a cookie, because the client sends withCredentials: true.
+const login = await post('/api/community/auth/login', { email: 'ada.lovelace@example.com', password: 'anything' })
+check('the fixture sign-in succeeds', login.status === 200 && !!login.body?.member,
+  `role=${login.body?.member?.role}`)
+// `emailVerified` gates canPost in the client; without it the forum renders read-only and
+// looks broken rather than signed out.
+check('the member carries emailVerified and a role the client checks',
+  login.body?.member?.emailVerified === true && ['ADMIN', 'MODERATOR'].includes(login.body?.member?.role),
+  `emailVerified=${login.body?.member?.emailVerified} role=${login.body?.member?.role}`)
+check('the member shape matches the fields the client reads',
+  login.body.member.id != null && !!login.body.member.displayName,
+  `keys: ${Object.keys(login.body.member).slice(0, 6).join(', ')}`)
+
+// Same-origin on BOTH hosts: production serves /api/community/* from joyous.is as well
+// as community.joyous.is, so a host-gated handler would be wrong.
+const hostScoped = await api('/api/community/auth/me', { headers: { Host: 'community.localhost:4400' } })
+check('the community API is reachable from both hosts',
+  hostScoped.status === 200 && 'member' in (hostScoped.body || {}),
+  `HTTP ${hostScoped.status}`)
+
+// An unimplemented endpoint must NOT answer 200 {}: the client would render an empty
+// screen, which reads as "no data" rather than "not built".
+const notYet = await get('/api/community/rooms')
+check('an unimplemented endpoint says so instead of returning 200 {}',
+  notYet.status === 501 && notYet.body?.__notImplemented === true,
+  `HTTP ${notYet.status} ${JSON.stringify(notYet.body).slice(0, 70)}`)
+
+// LiveKit and Discord are real external services. Refusing loudly beats a fake success.
+const live = await get('/api/community/live')
+check('LiveKit-dependent endpoints refuse rather than fake success',
+  live.status === 503 && live.body?.__simulated === true,
+  `HTTP ${live.status} integration=${live.body?.integration}`)
+const discord = await post('/api/community/auth/discord/unlink', {})
+check('Discord-dependent endpoints refuse rather than fake success',
+  discord.status === 503 && discord.body?.__simulated === true,
+  `HTTP ${discord.status} integration=${discord.body?.integration}`)
 
 assertAllPhasesRan()
 

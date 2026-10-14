@@ -33,6 +33,7 @@ import {
   seedCustomers, seedOrders, seedTickets, seedStockedProducts, seedCampaigns,
   applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
 } from './admin-seed.mjs'
+import { handleCommunityApi } from './community-api.mjs'
 import {
   seedSubscribers, seedCampaigns as seedNewsletterCampaigns,
   reachable, audienceCounts, SUBSCRIBER_MARK,
@@ -1572,6 +1573,13 @@ const server = createServer({
 
   // --- API ---------------------------------------------------------------
   if (pathname.startsWith('/api/')) {
+    // The community forum's API lives in its own module — 50 endpoints is a separate
+    // surface, and server.mjs is already 3.6k lines. Checked FIRST and host-agnostically
+    // so both hosts answer alike, which is what production does.
+    if (pathname.startsWith('/api/community/') || pathname === '/api/community') {
+      await handleCommunityApi(req, res, pathname)
+      return
+    }
     // --- Auth is synthesised, not recorded -------------------------------
     // These are the only endpoints that CANNOT be recorded: a recorded login
     // response is a snapshot, and the client needs a live one to establish a
