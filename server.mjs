@@ -68,7 +68,8 @@ function readBody(req) {
  */
 function buildSeedCart() {
   const items = []
-  const first = catalogProducts[0]
+  const wantGroupBuy = process.env.CART_SEED === 'groupbuy'
+  const first = wantGroupBuy ? null : catalogProducts[0]
   if (first) {
     const v = first.variants?.[0] ?? null
     items.push({
@@ -79,7 +80,7 @@ function buildSeedCart() {
   }
   // A pack line: pack deals are chosen on the detail page and stored on the line, so
   // seeding one keeps that pricing path exercised by the default state.
-  const second = catalogProducts.find((p) => (p.variants ?? []).some((v) =>
+  const second = wantGroupBuy ? null : catalogProducts.find((p) => (p.variants ?? []).some((v) =>
     (v.quantityDiscounts ?? []).some((q) => q.packPrice > 0 && (v.stockQty ?? 0) > 10)))
   if (second) {
     const pv = (second.variants ?? []).find((v) =>
@@ -94,14 +95,29 @@ function buildSeedCart() {
       product: second, variant: pv, groupBuyItem: null, saleItem: null, campaign: null,
     })
   }
-  const camp = catalogCampaigns[0]
-  const gi = camp?.items?.[0]
-  if (gi) {
-    items.push({
-      id: 'seed-groupbuy-1', kind: 'groupbuy', groupBuyItemId: gi.id, quantity: 1,
-      product: gi.product ?? null, variant: gi.variant ?? null,
-      groupBuyItem: gi, saleItem: null, campaign: camp,
-    })
+  // THE CART IS SINGLE-TYPE, AND THAT IS ENFORCED BY THE APP.
+  //
+  //   addProductItem:    if (getCartItemType() === "groupbuy") throw
+  //                      "Your cart contains Group Buy items. Please complete or
+  //                       clear your cart before adding regular products."
+  //   addGroupBuyItem:   if (getCartItemType() === "product") throw ...
+  //
+  // Seeding both kinds produced a MIXED cart - a state the UI cannot reach - and
+  // every attempt to add a regular product failed with that error. The app was
+  // correct; the fixture was invalid.
+  //
+  // Set CART_SEED=groupbuy to start with a campaign line instead, so that flow is
+  // still testable without hand-editing the seed.
+  if (process.env.CART_SEED === 'groupbuy') {
+    const camp = catalogCampaigns[0]
+    const gi = camp?.items?.[0]
+    if (gi) {
+      items.push({
+        id: 'seed-groupbuy-1', kind: 'groupbuy', groupBuyItemId: gi.id, quantity: 1,
+        product: gi.product ?? null, variant: gi.variant ?? null,
+        groupBuyItem: gi, saleItem: null, campaign: camp,
+      })
+    }
   }
   return items
 }
