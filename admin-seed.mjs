@@ -48,7 +48,10 @@ export function seedCustomers() {
     approved: c.approved,
     emailVerified: true,
     isAdmin: false,
-    createdAt: new Date(Date.now() - (200 - i * 12) * 86400000).toISOString(),
+    // Spread backwards, but cluster the FRONT of the list inside the last ~40 days.
+    // Creating every account months ago left "New customers" at 0 and the growth chart
+    // empty for any month-to-date range — technically correct and useless to look at.
+    createdAt: new Date(Date.now() - (i < 5 ? 3 + i * 7 : 60 + (i - 5) * 30) * 86400000).toISOString(),
     orderCount: c.orders,
     totalSpent: c.spent,
     phone: `55555501${String(10 + i).slice(-2)}`,

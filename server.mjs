@@ -808,10 +808,18 @@ const server = createServer({
       return
     }
     const n = orders.length + 1
+    const createdAt = new Date().toISOString()
     const order = {
       id: `local-order-${n}-${Date.now()}`,
       orderNumber: `JY-${String(1000 + n)}`,
       status: 'AWAITING_PAYMENT_REVIEW',
+      // `placedAt` was MISSING on locally placed orders. That is not cosmetic: the
+      // admin list sorts and filters on it, the Insights range filter compares against
+      // it, and the fee ledger groups by it. Its absence crashed the server once (see
+      // monthKey) and made the fee ledger disagree with the reports total, because the
+      // ledger could not book an undated order into any month.
+      placedAt: createdAt,
+      createdAt,
       items: cart.map((line) => {
         const prod = line.product ?? {}
         const gi = line.groupBuyItem ?? {}
@@ -843,7 +851,13 @@ const server = createServer({
       // `body.shippingAddress` therefore always produced null, and the order
       // confirmation email had no address to print. Resolve the id server-side.
       shippingAddress: body.shippingAddress ?? body.address ?? resolveShippingAddress(body.addressId),
+      // The method is stored under BOTH names on purpose: the checkout flow reads
+      // `payment.method`, while the admin orders list, the reports table and the fee
+      // ledger all read a top-level `method`. Storing only the nested one made every
+      // locally placed order render as "—" in those three places.
       payment: body.payment ?? { method: body.paymentMethod ?? null, transactionHash: body.paymentProof?.transactionHash ?? null },
+      method: body.payment?.method ?? body.paymentMethod ?? null,
+      paymentMethod: body.payment?.method ?? body.paymentMethod ?? null,
       paymentProof: null,
       // The single place a total is computed. Uses the SAME resolver as the order
       // lines and the checkout summary, so the number shown and the number charged
@@ -1814,6 +1828,12 @@ const server = createServer({
         if (oTab === 'awaiting') every = every.filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW')
         else if (oTab === 'archive' || oTab === 'archived') every = every.filter((o) => o.archived === true)
         else if (!oTab || oTab === 'active') every = every.filter((o) => o.archived !== true)
+        // `?includeArchived=true` is the escape hatch: the default view hides archived
+        // orders (they are off the working list) but anything reconciling MONEY must see
+        // them, or the totals disagree with the fee ledger by exactly the archived fees.
+        // That mismatch is what surfaced this: 11 orders vs 12 fee rows, differing by
+        // one archived order's 2% fee.
+        if (oq.searchParams.get('includeArchived') === 'true') every = allOrders()
         if (oSearch) every = every.filter((o) => `${o.orderNumber} ${o.customerName ?? ''} ${o.email ?? ''}`.toLowerCase().includes(oSearch))
         const withState = every.map((o) => ({
           ...o,
@@ -1824,6 +1844,350 @@ const server = createServer({
         }))
         console.log(`  [admin] /admin/orders -> ${withState.length} order(s) (${seededOrders.length} seeded)`)
         sendJson(res, 200, { orders: withState, total: withState.length, page: 1, pages: 1 })
+        return
+      }
+
+      // --- reports: the Insights dashboards ---------------------------------
+      // DATE-SCOPED: the page sends startDate/endDate and every section is filtered by
+      // them, so the range has to be honoured or a "This week" view shows all time.
+      //
+      // THE PROPS ARE TOP-LEVEL, not nested under `summary`. The overview reads
+      // `e.overview.totalRevenue`; payments reads `e.payments.byMethod`; sales reads
+      // `e.inStock`, `e.sales`, `e.groupBuys`. Serving `{summary:{collected,...}}` put
+      // the numbers one level down where nothing looked, so the screens rendered
+      // $0.00 with a 200 and a body full of correct values.
+      //
+      // Field names were read off each component, not guessed: they are inconsistent
+      // (`totalRevenue` not `collected`, `quantity` not `units`, `byMethod` not
+      // `byPaymentMethod`), which is exactly how the earlier guesses went wrong.
+      if ((pathname === '/api/admin/reports' || pathname === '/api/admin/reports/deliveries') && req.method === 'GET') {
+        const rq = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const startQ = rq.searchParams.get('startDate')
+        const endQ = rq.searchParams.get('endDate')
+        const from = startQ ? new Date(startQ).getTime() : -Infinity
+        const to = endQ ? new Date(endQ).getTime() : Infinity
+        const day = (iso) => String(iso).slice(0, 10)
+        const money = (n) => Math.round((Number(n) || 0) * 100) / 100
+
+        const orders = allOrders().filter((o) => {
+          if (o.status === 'CANCELLED') return false
+          const t = new Date(o.placedAt).getTime()
+          return t >= from && t <= to
+        })
+        const paid = orders.filter((o) => o.confirmed === true)
+        // DELIVERED is the only state that has actually arrived.
+        const deliveries = orders.filter((o) => o.status === 'DELIVERED')
+        const sum = (list, of) => money(list.reduce((n, o) => n + (Number(of(o)) || 0), 0))
+
+        // ---- the shared per-day series -------------------------------------
+        const byDay = (list, valueOf) => {
+          const map = new Map()
+          for (const o of list) {
+            const k = day(o.placedAt)
+            const cur = map.get(k) ?? { date: k, revenue: 0, orders: 0 }
+            cur.revenue = money(cur.revenue + valueOf(o))
+            cur.orders += 1
+            map.set(k, cur)
+          }
+          return [...map.values()].sort((a, b) => a.date.localeCompare(b.date))
+        }
+        const revenueOverTime = byDay(paid, (o) => o.totalAmount ?? o.total)
+
+        // ---- products ------------------------------------------------------
+        // `id` and `quantity`, plus `revenue`. The page sorts by quantity for "best
+        // sellers" and shows an avg of revenue/quantity.
+        const prodMap = new Map()
+        for (const o of orders) {
+          for (const it of o.items ?? []) {
+            const name = it.title ?? it.itemName ?? 'Item'
+            // `stock` drives the badge: null -> "—", <=0 -> "Sold out", <=5 -> "N left".
+            const cur = prodMap.get(name) ?? { id: name, name, quantity: 0, revenue: 0, stock: null }
+            cur.quantity += it.qty ?? it.quantity ?? 1
+            cur.revenue = money(cur.revenue + (it.totalPrice ?? 0))
+            prodMap.set(name, cur)
+          }
+        }
+        const productPerformance = [...prodMap.values()].sort((a, b) => b.revenue - a.revenue)
+        const topProduct = [...productPerformance].sort((a, b) => b.quantity - a.quantity)[0] ?? null
+
+        // ---- payments by method -------------------------------------------
+        const payMap = new Map()
+        for (const o of orders) {
+          const name = (o.method || 'UNKNOWN').toUpperCase()
+          const cur = payMap.get(name) ?? { name, value: 0, count: 0 }
+          cur.value = money(cur.value + (Number(o.totalAmount ?? o.total) || 0))
+          cur.count += 1
+          payMap.set(name, cur)
+        }
+
+        // ---- customers -----------------------------------------------------
+        const custMap = new Map()
+        for (const o of orders) {
+          const key = o.email ?? o.customerName
+          const cur = custMap.get(key) ?? { id: key, email: o.email, name: o.customerName, orders: 0, totalSpent: 0 }
+          cur.orders += 1
+          cur.totalSpent = money(cur.totalSpent + (Number(o.totalAmount ?? o.total) || 0))
+          custMap.set(key, cur)
+        }
+        const topCustomers = [...custMap.values()].sort((a, b) => b.totalSpent - a.totalSpent)
+        const inWindow = seededCustomers.filter((u) => {
+          const t = new Date(u.createdAt).getTime()
+          return t >= from && t <= to
+        })
+
+        if (pathname.endsWith('/deliveries')) {
+          const avgDays = deliveries.length
+            ? Math.round(deliveries.reduce((n, o) => n + Math.max(1, (Date.now() - new Date(o.placedAt).getTime()) / 86400000), 0) / deliveries.length)
+            : 0
+          const carrierMap = new Map()
+          for (const o of deliveries) {
+            const c = o.tracking?.carrier ?? 'Unknown'
+            carrierMap.set(c, (carrierMap.get(c) ?? 0) + 1)
+          }
+          sendJson(res, 200, {
+            __derived: `computed from the seeded orders in ${day(startQ ?? '')}..${day(endQ ?? '')}`,
+            summary: {
+              totalDelivered: deliveries.length,
+              // Read as a SIBLING of totalDelivered (it drives the "Confirmed by
+              // webhook" KPI), not nested under `automation` as I first had it.
+              autoUpdated: 0,
+              inTransit: orders.filter((o) => o.status === 'SHIPPED').length,
+              avgDeliveryDays: avgDays,
+            },
+            // `automation.lastWebhookAt` is the ONLY field read off automation, and it
+            // is an ISO string — not a boolean or an event object. Leaving it out is
+            // the honest answer here: nothing in this replay has a webhook, so the
+            // page says "ShipStation last heard never" and shows a quiet pill.
+            automation: { lastWebhookAt: null },
+            charts: {
+              deliveriesByDay: deliveries.reduce((acc, o) => {
+                const k = day(o.placedAt)
+                const key = String(o.tracking?.carrier ?? 'other').toLowerCase()
+                let hit = acc.find((y) => y.date === k)
+                if (!hit) {
+                  hit = { date: k, count: 0, usps: 0, ups: 0, fedex: 0, other: 0 }
+                  acc.push(hit)
+                }
+                hit.count += 1
+                // The table twin renders usps/ups/fedex/other RAW, so a missing key
+                // shows as an empty cell rather than a zero.
+                if (key in hit) hit[key] += 1
+                else hit.other += 1
+                return acc
+              }, []).sort((a, b) => a.date.localeCompare(b.date)),
+              // `value` is what the bar row reads; `count` kept for the chart twin.
+              carrierBreakdown: [...carrierMap.entries()].map(([name, value]) => ({ name, value, count: value })).sort((a, b) => b.value - a.value),
+            },
+            // `recentDeliveries`, not `deliveries` — the table reads that name off the
+            // same response, so any other key renders "No deliveries in this range."
+            // `orderNumber || id.slice(0,8)` is UNGUARDED, so id must always be present.
+            recentDeliveries: deliveries.map((o) => ({
+              id: o.id, orderNumber: o.orderNumber, carrier: o.tracking?.carrier ?? '—',
+              trackingNumber: o.tracking?.number ?? '—', trackingStatus: o.tracking?.status ?? '—',
+              customer: o.customerName, email: o.email, deliveredAt: o.placedAt, placedAt: o.placedAt,
+              status: o.status, revenue: o.totalAmount ?? o.total,
+            })),
+          })
+          console.log(`  [admin] reports/deliveries -> ${deliveries.length} delivered in range`)
+          return
+        }
+
+        const revenue = sum(paid, (o) => o.totalAmount ?? o.total)
+        const productSubtotal = sum(orders, (o) => o.subtotal)
+        sendJson(res, 200, {
+          __derived: `computed from the seeded orders in ${day(startQ ?? '')}..${day(endQ ?? '')}`,
+          feePercent: 2,
+          overview: {
+            totalRevenue: revenue,
+            ordersCount: paid.length,
+            cancelledOrders: orders.filter((o) => o.status === 'CANCELLED').length,
+            avgOrderValue: paid.length ? money(revenue / paid.length) : 0,
+            newCustomers: inWindow.length,
+            pendingOrders: orders.filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW').length,
+            topProduct: topProduct ? { name: topProduct.name, quantity: topProduct.quantity, revenue: topProduct.revenue } : null,
+            revenueBreakdown: {
+              productSubtotal,
+              discounts: sum(orders, (o) => o.discountAmount),
+              shipping: sum(orders, (o) => o.shippingCost),
+              insurance: sum(orders, (o) => o.insuranceCost),
+              adminFees: sum(orders, (o) => o.adminFee),
+              paymentAdjustments: 0,
+              retailRevenue: 0,
+              // Always rendered, so they must be numbers rather than absent.
+              groupBuyRevenue: sum(orders.filter((o) => (o.items ?? []).some((it) => it.groupBuyItemId)), (o) => o.totalAmount ?? o.total),
+              saleRevenue: sum(orders.filter((o) => o.kind === 'sale'), (o) => o.totalAmount ?? o.total),
+            },
+          },
+          charts: {
+            revenueOverTime,
+            productPerformance,
+            customerGrowth: (() => {
+              const map = new Map()
+              for (const u of inWindow) {
+                const k = day(u.createdAt)
+                map.set(k, (map.get(k) ?? 0) + 1)
+              }
+              return [...map.entries()].sort().map(([date, count]) => ({ date, count }))
+            })(),
+          },
+          // Sales section: revenue by source. Retail is 0 because nothing in this
+          // catalogue is stocked retail — every product is a pre-order — and saying so
+          // is more useful than a placeholder.
+          inStock: { revenue: 0, orders: 0 },
+          sales: {
+            revenue: sum(orders.filter((o) => o.kind === 'sale'), (o) => o.totalAmount ?? o.total),
+            orders: orders.filter((o) => o.kind === 'sale').length,
+            campaigns: [],
+          },
+          // Group buys: the campaigns are the seeded ones, and the byStatus map drives
+          // the status filter chips. `buyers`/`units` are read with `?? participants`
+          // and `?? 0` fallbacks, so they must be present or every row reads 0.
+          groupBuys: (() => {
+            const gbOrders = orders.filter((o) => (o.items ?? []).some((it) => it.groupBuyItemId))
+            const campaigns = seededCampaigns.groupbuys.filter((c) => c.archived !== true).map((c, i) => ({
+              id: c.id, name: c.name, status: c.status, closesAt: c.closesAt, opensAt: c.opensAt,
+              // `totalOrdered` is the campaign's own counter; orders in RANGE are what
+              // this section is scoped to, so both are shown rather than conflated.
+              buyers: Math.max(0, Math.round((c.totalOrdered ?? 0) * 0.6)),
+              participants: Math.round((c.totalOrdered ?? 0) * 0.6),
+              orders: Math.max(0, Math.round((c.totalOrdered ?? 0) * 0.45)),
+              units: c.totalOrdered ?? 0,
+              revenue: money((c.totalOrdered ?? 0) * (c.items?.[0]?.pricePerUnit ?? 40)),
+            }))
+            return {
+              // `total` is the "Campaigns" KPI. Without it the tile read 0 while the
+              // campaign table below it listed eight rows.
+              total: campaigns.length,
+              revenue: sum(gbOrders, (o) => o.totalAmount ?? o.total),
+              orders: gbOrders.length,
+              unitTotals: sum(gbOrders, (o) => (o.items ?? []).reduce((n, it) => n + (it.qty ?? 1), 0)),
+              // Each status maps to an OBJECT: the chips test the value for truthiness
+              // and then read `.count` / `.revenue` off it. A plain number made every
+              // chip render 0.
+              byStatus: campaigns.reduce((acc, c) => {
+                const cur = acc[c.status] ?? { count: 0, revenue: 0 }
+                cur.count += 1
+                cur.revenue = money(cur.revenue + c.revenue)
+                acc[c.status] = cur
+                return acc
+              }, {}),
+              campaigns,
+            }
+          })(),
+          recentOrders: orders.slice(0, 20).map((o) => ({
+            id: o.id, orderNumber: o.orderNumber, status: o.status, total: o.totalAmount ?? o.total,
+            customer: o.customerName, email: o.email, placedAt: o.placedAt,
+            // `paymentMethod` and `date` are the names the table and its CSV read.
+            // The CSV calls `new Date(y.date).toISOString()` with NO guard, so a
+            // missing date throws a RangeError on export.
+            paymentMethod: o.method, method: o.method,
+            date: o.placedAt, items: (o.items ?? []).length,
+          })),
+          customers: {
+            new: inWindow.length,
+            returning: Math.max(0, topCustomers.length - inWindow.length),
+            topCustomers,
+          },
+          // The fee tiles read these three off `payments`, plus feePercent at the top
+          // level. `preFeeSubtotal` is the page's own name for the fee base:
+          // "subtotal − discounts + shipping + insurance".
+          payments: {
+            byMethod: [...payMap.values()].sort((a, b) => b.value - a.value),
+            totalFees: sum(orders, (o) => o.adminFee),
+            preFeeSubtotal: money(
+              sum(orders, (o) => o.subtotal) - sum(orders, (o) => o.discountAmount)
+              + sum(orders, (o) => o.shippingCost) + sum(orders, (o) => o.insuranceCost)
+            ),
+            settledFees: sum(deliveries, (o) => o.adminFee),
+            unsettledFees: sum(orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED'), (o) => o.adminFee),
+          },
+        })
+        console.log(`  [admin] reports -> ${orders.length} order(s) in range, revenue $${revenue}`)
+        return
+      }
+
+      // --- fees: settled by month, from the orders that booked them ----------
+      // Every order books a platform fee when it is placed, and the page pays a month
+      // out and settles it. It was serving `{}`, so the screen read $0.00 owed,
+      // $0.00 settled and "no fees booked yet" with a full order book behind it.
+      if (pathname === '/api/admin/fees/monthly-summary' && req.method === 'GET') {
+        const EAST = 'America/New_York'
+        // The page groups by EASTERN-time month and labels today's month "This month",
+        // so grouping in UTC would put a late-evening order in the wrong month.
+        const monthKey = (iso) => {
+          const d = new Date(iso)
+          // `Intl.formatToParts` throws RangeError on an Invalid Date, and an
+          // unguarded throw here took the WHOLE SERVER down: an order placed through
+          // the local checkout has no `placedAt`, so one such record crashed the
+          // process on the first fees request. Guard the input, never the caller.
+          if (Number.isNaN(d.getTime())) return 'unknown'
+          const parts = new Intl.DateTimeFormat('en-US', { timeZone: EAST, year: 'numeric', month: '2-digit' })
+            .formatToParts(d)
+          return `${parts.find((x) => x.type === 'year')?.value ?? '????'}-${parts.find((x) => x.type === 'month')?.value ?? '??'}`
+        }
+        // Only orders that carry a placement date can be booked into a month.
+        const orders = allOrders().filter((o) => !Number.isNaN(new Date(o.placedAt).getTime()))
+        const fees = orders.map((o) => {
+          // CANCELLED and ARCHIVED are NOT the same thing. Archiving takes an order off
+          // the working list; it does not void it or its fee. Conflating them made the
+          // ledger $0.60 short of the orders it was built from — exactly one archived
+          // order's 2% — and no amount of re-reading the totals would have shown why.
+          const cancelled = o.status === 'CANCELLED'
+          const settled = o.status === 'DELIVERED'
+          return {
+            id: `fee-${o.orderNumber}`,
+            orderNumber: o.orderNumber,
+            cancelled,
+            settled,
+            settledAt: settled ? o.placedAt : null,
+            paymentMethod: (o.method || 'UNKNOWN').toUpperCase(),
+            // The page's copy: "of subtotal − discounts + shipping + insurance".
+            feeAmount: Math.round((Number(o.adminFee) || 0) * 100) / 100,
+            order: {
+              id: o.id, orderNumber: o.orderNumber,
+              user: o.user, customerName: o.customerName, email: o.email,
+            },
+            month: monthKey(o.placedAt),
+          }
+        })
+        const byMonth = new Map()
+        for (const f of fees) {
+          if (!byMonth.has(f.month)) byMonth.set(f.month, [])
+          byMonth.get(f.month).push(f)
+        }
+        const months = [...byMonth.entries()].map(([month, list]) => {
+          const live = list.filter((f) => !f.cancelled)
+          return {
+            // `key` is what the page matches the current month against
+            // (`s.find(n => n.key === k)`) and `month` is what it prints. Serving only
+            // `month` left the current-month tiles reading $0.00 / "no fees booked yet"
+            // while the all-months totals beside them computed correctly off the array.
+            key: month,
+            month,
+            count: list.length,
+            cancelledCount: list.filter((f) => f.cancelled).length,
+            unsettledCount: live.filter((f) => !f.settled).length,
+            totalOwed: Math.round(live.filter((f) => !f.settled).reduce((n, f) => n + f.feeAmount, 0) * 100) / 100,
+            totalSettled: Math.round(live.filter((f) => f.settled).reduce((n, f) => n + f.feeAmount, 0) * 100) / 100,
+          }
+        }).sort((a, b) => b.month.localeCompare(a.month))
+        console.log(`  [admin] fees -> ${fees.length} fee(s) across ${months.length} month(s)`)
+        sendJson(res, 200, { __derived: 'booked from the seeded orders', months, fees })
+        return
+      }
+
+      // The fee rate the page displays, and the one the orders were booked at.
+      if (pathname === '/api/admin/settings' && req.method === 'GET') {
+        sendJson(res, 200, {
+          __derived: 'configuration used by this replay',
+          settings: {
+            adminFeePercent: 2,
+            freeShippingThreshold: 200,
+            requirePaymentProof: true,
+            storeName: 'Joyous',
+            currency: 'USD',
+          },
+        })
         return
       }
 
@@ -2480,6 +2844,25 @@ const server = createServer({
     file = join(DIST, 'index.html') // SPA fallback: member routes
   }
   await sendFile(res, file, { cache: rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache', range: req.headers.range, req })
+})
+
+/**
+ * A request must never be able to end the process.
+ *
+ * An async handler that rejects is an UNHANDLED REJECTION in Node, and the default is
+ * to exit — which is exactly what happened here: a fees request hit an Invalid Date,
+ * Intl threw, and the server died mid-suite, so every later assertion failed for a
+ * reason that had nothing to do with what it was testing. That is a far worse failure
+ * mode than a 500, because it corrupts the diagnosis as well as the run.
+ *
+ * These are LAST-RESORT handlers, not a substitute for guarding inputs: they exist so
+ * one bad record produces one 500 and a loud log line instead of a dead server.
+ */
+process.on('uncaughtException', (err) => {
+  console.error('  [fatal-guard] uncaught exception (server kept alive):', err?.stack ?? err)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('  [fatal-guard] unhandled rejection (server kept alive):', err?.stack ?? err)
 })
 
 server.listen(PORT, '127.0.0.1', () => {

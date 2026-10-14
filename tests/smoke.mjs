@@ -172,7 +172,7 @@ const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
-  'fallback pages',
+  'fallback pages', 'insights',
 ]
 const ranPhases = []
 
@@ -882,6 +882,130 @@ if (probe2.status !== 0) {
   }
   if (!out2) fail('page render sweep', `exited ${res2.status}: ${(res2.stderr || '').slice(0, 200)}`)
 }
+
+/* ============================================================== insights ==== */
+
+phase('insights', 'Insights — reports and fee settlement')
+
+const RANGE = (() => {
+  const now = new Date()
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  return `startDate=${start.toISOString()}&endDate=${end.toISOString()}`
+})()
+
+const rep = await get(`/api/admin/reports?${RANGE}`)
+const r = rep.body || {}
+// THE PROPS ARE TOP-LEVEL. The overview reads `e.overview.totalRevenue`, not
+// `e.summary.collected`; serving the numbers one level down left every screen at
+// $0.00 with a 200 and a body full of correct values.
+check('reports exposes the top-level sections the page reads',
+  ['overview', 'charts', 'inStock', 'sales', 'groupBuys', 'recentOrders', 'customers', 'payments']
+    .every((k) => k in r),
+  `keys: ${Object.keys(r).join(', ')}`)
+check('overview carries the KPI names the tiles read',
+  ['totalRevenue', 'ordersCount', 'cancelledOrders', 'avgOrderValue', 'newCustomers', 'pendingOrders']
+    .every((k) => k in (r.overview || {})),
+  `keys: ${Object.keys(r.overview || {}).join(', ')}`)
+check('revenueBreakdown carries every leaf the table reads',
+  ['productSubtotal', 'retailRevenue', 'groupBuyRevenue', 'saleRevenue', 'discounts', 'shipping', 'insurance', 'adminFees', 'paymentAdjustments']
+    .every((k) => k in (r.overview?.revenueBreakdown || {})),
+  `keys: ${Object.keys(r.overview?.revenueBreakdown || {}).join(', ')}`)
+check('the payments fee tiles resolve',
+  ['byMethod', 'totalFees', 'preFeeSubtotal', 'settledFees', 'unsettledFees']
+    .every((k) => k in (r.payments || {})),
+  `keys: ${Object.keys(r.payments || {}).join(', ')}`)
+check('groupBuys.total drives the Campaigns KPI', typeof r.groupBuys?.total === 'number',
+  `total=${r.groupBuys?.total}`)
+// byStatus values are OBJECTS: the chips test truthiness then read .count/.revenue.
+check('groupBuys.byStatus values are {count, revenue} objects',
+  Object.values(r.groupBuys?.byStatus || {}).every((v) => v && typeof v === 'object' && 'count' in v && 'revenue' in v),
+  JSON.stringify(Object.entries(r.groupBuys?.byStatus || {}).slice(0, 2)))
+// The sales table does `x.orderNumber || x.id.slice(0,8)` with NO guard, so a row
+// missing both throws during render. `date` feeds an unguarded new Date() on CSV export.
+check('recentOrders carry id + date + paymentMethod',
+  (r.recentOrders || []).every((o) => o.id != null && o.date != null && 'paymentMethod' in o),
+  `${(r.recentOrders || []).length} order(s)`)
+
+const dl = await get(`/api/admin/reports/deliveries?${RANGE}`)
+const d2 = dl.body || {}
+check('deliveries uses recentDeliveries, not deliveries',
+  Array.isArray(d2.recentDeliveries) && !('deliveries' in d2),
+  `keys: ${Object.keys(d2).join(', ')}`)
+check('delivery summary carries inTransit and autoUpdated as siblings',
+  ['totalDelivered', 'autoUpdated', 'inTransit', 'avgDeliveryDays'].every((k) => k in (d2.summary || {})),
+  `keys: ${Object.keys(d2.summary || {}).join(', ')}`)
+check('automation exposes lastWebhookAt (the only field read off it)',
+  'lastWebhookAt' in (d2.automation || {}),
+  `keys: ${Object.keys(d2.automation || {}).join(', ')}`)
+check('carrierBreakdown entries carry value for the bar rows',
+  (d2.charts?.carrierBreakdown || []).every((c) => 'value' in c),
+  JSON.stringify(d2.charts?.carrierBreakdown?.slice(0, 2)))
+check('deliveriesByDay carries the carrier split columns',
+  (d2.charts?.deliveriesByDay || []).every((x) => ['date', 'count', 'usps', 'ups', 'fedex', 'other'].every((k) => k in x)),
+  JSON.stringify(d2.charts?.deliveriesByDay?.[0] || {}))
+
+// ---- the fee ledger must agree with the orders that booked it -------------
+// `?includeArchived=true` on purpose: the default list hides archived orders, but
+// anything reconciling MONEY has to see them, or the totals differ by exactly the
+// archived fees. Comparing a filtered list to an unfiltered ledger is the mistake that
+// made this look like a ledger bug when the ledger was right.
+const ordersForFees = (await get('/api/admin/orders?includeArchived=true')).body.orders
+const ledger = await get('/api/admin/fees/monthly-summary')
+const months = ledger.body?.months || []
+check('the fee ledger has a month', months.length > 0, `${months.length} month(s)`)
+// `key` is what the page matches the current month against; `month` is what it prints.
+check('each month carries key AND month', months.every((m) => m.key && m.month),
+  `keys: ${months.map((m) => m.key).join(', ')}`)
+const feeRows = ledger.body?.fees || []
+check('each fee row carries the fields the table reads',
+  feeRows.every((f) => f.id && f.order && 'settled' in f && 'cancelled' in f && 'feeAmount' in f && 'paymentMethod' in f),
+  `${feeRows.length} fee(s)`)
+// TWO INDEPENDENT PATHS to the same money: the orders list, and the fee ledger.
+// ARCHIVED is not CANCELLED. Archiving takes an order off the working list; it does
+// not void it or its fee. Treating them as the same left the ledger $0.60 short.
+const liveFees = ordersForFees.filter((o) => o.status !== 'CANCELLED')
+const owedFromOrders = Math.round(liveFees.filter((o) => o.status !== 'DELIVERED').reduce((n, o) => n + (o.adminFee || 0), 0) * 100) / 100
+eq('owed total agrees with the orders that booked it', months[0]?.totalOwed, owedFromOrders)
+// FOUR independent paths to the same money: the orders, the fee rows, the month
+// rollup, and the reports section. They must all land on one number.
+const fromOrders = Math.round(liveFees.reduce((n, o) => n + (o.adminFee || 0), 0) * 100) / 100
+const fromFees = Math.round(feeRows.filter((f) => !f.cancelled).reduce((n, f) => n + f.feeAmount, 0) * 100) / 100
+const fromMonths = Math.round(months.reduce((n, m) => n + m.totalOwed + m.totalSettled, 0) * 100) / 100
+eq('fee rows agree with the orders', fromFees, fromOrders)
+eq('month rollup agrees with the fee rows', fromMonths, fromFees)
+eq('reports totalFees agrees with all of them', r.payments?.totalFees, fromOrders)
+
+// A CANCELLED order is void; an ARCHIVED one is not. Assert the distinction holds.
+const archivedForFees = ordersForFees.filter((o) => o.archived === true)
+check('archived orders still book a fee (unlike cancelled)',
+  archivedForFees.every((o) => feeRows.some((f) => f.orderNumber === o.orderNumber && !f.cancelled)),
+  `${archivedForFees.length} archived order(s)`)
+
+// ---- the crash this work introduced, and the guard against it -------------
+// An order placed through the local checkout has no `placedAt`. `Intl.formatToParts`
+// throws RangeError on an Invalid Date, the throw was unhandled inside an async request
+// handler, and Node EXITED — killing the server mid-suite so every LATER assertion
+// failed for a reason unrelated to what it was testing. One bad record must produce one
+// 500, never a dead process.
+await clearCart()
+const anyProd = (await get('/api/products/catalog')).body.products.find((x) => !x.soldOut)
+if (anyProd) {
+  await post('/api/cart', { productId: anyProd.id, variantId: anyProd.variants?.[0]?.id, quantity: 1 })
+  // `/api/orders/create`, NOT `/api/orders` — the latter is GET-only and falls through
+  // to the replay, answering `{orders: []}` with a 200, which reads like success.
+  await api('/api/orders/create', {
+    method: 'POST',
+    body: { addressId: ADDRESS_ID, paymentMethod: 'USDT' },
+    headers: { 'Idempotency-Key': 'smoke-undated-order' },
+  })
+}
+const afterFees = await get('/api/admin/fees/monthly-summary')
+check('a locally placed order does not break the fee ledger', afterFees.status === 200,
+  `HTTP ${afterFees.status}`)
+check('the server is still alive after an undated order', (await get('/api/admin/orders')).status === 200,
+  'the fatal-guard held')
+await clearCart()
 
 assertAllPhasesRan()
 
