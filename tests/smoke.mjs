@@ -54,9 +54,49 @@ assertLoopback(BASE)
 const results = []
 let currentPhase = ''
 
-function phase(name) {
-  currentPhase = name
-  console.log(`\n${'─'.repeat(72)}\n  ${name}\n${'─'.repeat(72)}`)
+/**
+ * `name` is the registry key (asserted to have run); `title` is what a human reads.
+ * They differ so a long descriptive heading does not have to double as an identifier.
+ */
+function phase(name, title) {
+  currentPhase = title ?? name
+  ranPhases.push(name)
+  console.log(`\n${'─'.repeat(72)}\n  ${title ?? name}\n${'─'.repeat(72)}`)
+}
+
+/**
+ * Every declared phase must have run, exactly once.
+ *
+ * This is the guard that a rename makes necessary and a guard makes useful: without it,
+ * renaming a phase, duplicating one, or inserting a section above an early `return`
+ * would silently drop checks and still print a green summary. A suite that quietly
+ * stops testing something is worse than one that fails.
+ */
+function assertAllPhasesRan() {
+  const seen = new Set(ranPhases)
+  const problems = []
+
+  // The REGISTRY itself, checked first. Checking only ranPhases against PHASES let a
+  // duplicated entry in PHASES through: every phase still ran and every name still
+  // resolved, so the counts disagreed (12 of 13) and the check still passed.
+  const regDupes = PHASES.filter((p, i) => PHASES.indexOf(p) !== i)
+  if (regDupes.length) problems.push(`declared twice in PHASES: ${[...new Set(regDupes)].join(', ')}`)
+
+  const missing = PHASES.filter((p) => !seen.has(p))
+  const dupes = [...seen].filter((p) => ranPhases.filter((x) => x === p).length > 1)
+  const unknown = [...seen].filter((p) => !PHASES.includes(p))
+  if (missing.length) problems.push(`declared but never ran: ${missing.join(', ')}`)
+  if (dupes.length) problems.push(`ran more than once: ${dupes.join(', ')}`)
+  if (unknown.length) problems.push(`ran but not declared in PHASES: ${unknown.join(', ')}`)
+
+  // Counts must agree, which catches a registry/run mismatch the lists above miss.
+  if (!problems.length && ranPhases.length !== PHASES.length) {
+    problems.push(`ran ${ranPhases.length} phases but ${PHASES.length} are declared`)
+  }
+
+  check('every declared phase ran exactly once', problems.length === 0,
+    problems.join(' | ') || `${ranPhases.length} of ${PHASES.length} phases`)
+  return problems.length === 0
 }
 
 function record(status, name, detail) {
@@ -121,9 +161,27 @@ const post = (p, body, o = {}) => api(p, { ...o, method: 'POST', body })
 const put = (p, body, o = {}) => api(p, { ...o, method: 'PUT', body })
 const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 
-/* ============================================================== PHASE 1 ==== */
+/**
+ * Names, not numbers.
+ *
+ * The phases were numbered, but they were APPENDED over time — so phase 8 sat above
+ * phase 7 in the file and the numbers no longer matched the run order. "Phase 9" told
+ * you nothing about where it ran or what it covered. Names remove the question, and
+ * the registry below lets the summary assert that every declared phase actually ran.
+ */
+const PHASES = [
+  'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
+  'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
+  'fallback pages',
+]
+const ranPhases = []
 
-phase('1. Environment')
+const { spawnSync } = await import('node:child_process')
+const py = PY || 'python3'
+
+/* = environment ==== */
+
+phase('environment', 'Environment')
 
 const health = await get('/api/products/catalog')
 if (!check('replay server answers /api/products/catalog', health.status === 200, `HTTP ${health.status}`)) {
@@ -145,9 +203,9 @@ check('member session resolves', !!user?.email, user?.email)
 eq('member is VIP', user?.tier, 'VIP')
 eq('admin seed is ON (ADMIN_VIEW=1)', user?.isAdmin, true)
 
-/* ============================================================== PHASE 2 ==== */
+/* = catalog ==== */
 
-phase('2. Customer — catalog, tier gating, stock display')
+phase('catalog', 'Customer — catalog, tier gating, stock display')
 
 const bySlug = (s) => catalog.find((p) => p.slug === s)
 const A = bySlug('test-product-a-high-stock')
@@ -168,9 +226,9 @@ check('GET /api/products/:slug returns {product,related}',
   `keys: ${Object.keys(detail.body || {}).join(', ')}`)
 eq('detail stock matches list stock', detail.body?.product?.variants[0].availableStock, 100)
 
-/* ============================================================== PHASE 3 ==== */
+/* = cart ==== */
 
-phase('3. Customer — cart lifecycle')
+phase('cart', 'Customer — cart lifecycle')
 
 async function clearCart() {
   const cur = await get('/api/cart')
@@ -202,9 +260,9 @@ cart = (await get('/api/cart')).body
 eq('after removing A, one line remains', cart.items.length, 1)
 eq('the surviving line is product B', cart.items[0].productId, B.id)
 
-/* ============================================================== PHASE 4 ==== */
+/* = guards ==== */
 
-phase('4. Server-side guards (the security assertions)')
+phase('guards', 'Server-side guards (the security assertions)')
 
 // Each guard below assumes a specific cart, so build it rather than inheriting
 // Phase 3's leftovers. Assuming a clean cart is how a suite gets order-dependent.
@@ -266,9 +324,9 @@ check('a client-supplied subtotal cannot inflate the discount',
   forgedSub.body?.discount?.discountAmount <= realSub,
   `claimed subtotal 999999 -> discount ${forgedSub.body?.discount?.discountAmount}, real subtotal ${realSub}`)
 
-/* ============================================================== PHASE 5 ==== */
+/* = checkout ==== */
 
-phase('5. Customer — checkout and order creation')
+phase('checkout', 'Customer — checkout and order creation')
 
 cart = (await get('/api/cart')).body
 const expectedSubtotal = cart.items.reduce((n, i) => n + i.variant.pricePerUnit * i.quantity, 0)
@@ -340,9 +398,9 @@ if (order) {
     detailRes.body?.order?.orderNumber === order.orderNumber, `HTTP ${detailRes.status}`)
 }
 
-/* ============================================================== PHASE 6 ==== */
+/* = admin orders ==== */
 
-phase('6. Admin — orders, authorization, status transitions')
+phase('admin orders', 'Admin — orders, authorization, status transitions')
 
 const adminList = await get('/api/admin/orders')
 check('admin order list is reachable with the seed', adminList.status === 200, `HTTP ${adminList.status}`)
@@ -382,9 +440,37 @@ blocked('fail-closed test-mode environment guard',
 blocked('server-persisted cart line items',
   'The replay cart is in-memory and resets on restart; it is not a durable cart.')
 
-/* ============================================================== PHASE 8 ==== */
+/* = ui browser ==== */
 
-phase('8. Admin — product CRUD and inventory')
+phase('ui browser', 'UI — real browser journey')
+
+// Phase 5 emptied the cart, and /checkout redirects to /cart when empty.
+await clearCart()
+await post('/api/cart', { productId: A.id, variantId: A.variants[0].id, quantity: 2 })
+const preUi = (await get('/api/cart')).body
+check('cart is populated before the UI walk', preUi.items.length === 1,
+  `${preUi.items.length} line(s)`)
+
+const uiScript = new URL('./smoke-ui.py', import.meta.url).pathname
+const probe = spawnSync(py, ['-c', 'import playwright'], { encoding: 'utf8' })
+if (probe.status !== 0) {
+  skip('browser journey', `Playwright not importable by ${py} — pass --python <path> to point at an env that has it`)
+} else {
+  const ui = spawnSync(py, [uiScript, '--base', BASE], { encoding: 'utf8' })
+  const out = (ui.stdout || '').trim()
+  for (const line of out.split('\n')) if (line.trim()) console.log(`  ${line}`)
+  // The UI script prints its own PASS/FAIL/SKIP lines; fold them into the summary.
+  for (const line of out.split('\n')) {
+    const m = /^\s*(PASS|FAIL|SKIP|BLOCK)\s+(.*)$/.exec(line)
+    if (m) record(m[1] === 'BLOCK' ? 'BLOCKED' : m[1], `[ui] ${m[2]}`, '')
+  }
+  if (ui.status !== 0 && !out) fail('browser journey', `ui script exited ${ui.status}: ${(ui.stderr || '').slice(0, 300)}`)
+}
+
+
+/* = product CRUD ==== */
+
+phase('product CRUD', 'Admin — product CRUD and inventory')
 
 // These were BLOCKED until the routes existed. The slug is prefixed so cleanup can
 // identify exactly what this run created and never touch a recorded product.
@@ -494,39 +580,9 @@ try {
 }
 pass('cleanup removed only smoke-authored products', cleaned)
 
-/* ============================================================== PHASE 7 ==== */
+/* = admin fixtures ==== */
 
-phase('7. UI — real browser journey')
-
-// Phase 5 emptied the cart, and /checkout redirects to /cart when empty.
-await clearCart()
-await post('/api/cart', { productId: A.id, variantId: A.variants[0].id, quantity: 2 })
-const preUi = (await get('/api/cart')).body
-check('cart is populated before the UI walk', preUi.items.length === 1,
-  `${preUi.items.length} line(s)`)
-
-const { spawnSync } = await import('node:child_process')
-
-const uiScript = new URL('./smoke-ui.py', import.meta.url).pathname
-const py = PY || 'python3'
-const probe = spawnSync(py, ['-c', 'import playwright'], { encoding: 'utf8' })
-if (probe.status !== 0) {
-  skip('browser journey', `Playwright not importable by ${py} — pass --python <path> to point at an env that has it`)
-} else {
-  const ui = spawnSync(py, [uiScript, '--base', BASE], { encoding: 'utf8' })
-  const out = (ui.stdout || '').trim()
-  for (const line of out.split('\n')) if (line.trim()) console.log(`  ${line}`)
-  // The UI script prints its own PASS/FAIL/SKIP lines; fold them into the summary.
-  for (const line of out.split('\n')) {
-    const m = /^\s*(PASS|FAIL|SKIP|BLOCK)\s+(.*)$/.exec(line)
-    if (m) record(m[1] === 'BLOCK' ? 'BLOCKED' : m[1], `[ui] ${m[2]}`, '')
-  }
-  if (ui.status !== 0 && !out) fail('browser journey', `ui script exited ${ui.status}: ${(ui.stderr || '').slice(0, 300)}`)
-}
-
-/* ============================================================== PHASE 9 ==== */
-
-phase('9. Admin — seeded fixtures and the button actions')
+phase('admin fixtures', 'Admin — seeded fixtures and the button actions')
 
 // Without fixtures every admin screen renders its empty state, which makes "the
 // feature is missing" indistinguishable from "there is no data".
@@ -617,9 +673,9 @@ if (fresh) {
     `HTTP ${conf.status}`)
 }
 
-/* ============================================================= PHASE 10 ==== */
+/* = campaigns ==== */
 
-phase('10. Admin — group-buy and sale campaigns')
+phase('campaigns', 'Admin — group-buy and sale campaigns')
 
 const camps = await get('/api/admin/groupbuys')
 const rows = camps.body?.campaigns || []
@@ -700,9 +756,9 @@ const sales = await get('/api/admin/sales')
 check('the sales list is populated', (sales.body?.sales || []).length > 0,
   `${(sales.body?.sales || []).length} sale(s)`)
 
-/* ============================================================= PHASE 11 ==== */
+/* = dashboard ==== */
 
-phase('11. Admin — the Today dashboard agrees with its lists')
+phase('dashboard', 'Admin — the Today dashboard agrees with its lists')
 
 const dash = await get('/api/admin/dashboard/counts')
 const c = dash.body || {}
@@ -755,9 +811,9 @@ const todayLine = await get('/api/admin/dashboard/today')
 check('the Today activity line resolves', typeof todayLine.body?.newOrders === 'number',
   JSON.stringify(todayLine.body))
 
-/* ============================================================= PHASE 12 ==== */
+/* = fallback pages ==== */
 
-phase('12. The fallback endpoints a page actually reads')
+phase('fallback pages', 'The fallback endpoints a page actually reads')
 
 // These served `{}` while a page was READING them. An empty object satisfies
 // `if (data)`, so every number rendered blank and the response looked correct — the
@@ -826,6 +882,8 @@ if (probe2.status !== 0) {
   }
   if (!out2) fail('page render sweep', `exited ${res2.status}: ${(res2.stderr || '').slice(0, 200)}`)
 }
+
+assertAllPhasesRan()
 
 /* ================================================================ summary == */
 
