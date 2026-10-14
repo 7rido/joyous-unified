@@ -4,3 +4,13 @@ node_modules/
 # The seeded browser profile used to verify the member surface. Browser cache and
 # credentials, not project source.
 .local-chrome-profile/
+
+# The UNREDACTED capture set. Kept on disk for reference; must never be published.
+# It is the pre-sanitisation recording and one file still carries the account's real
+# first name inside a chat reply ("Hi <name>! ..."). The sanitised set in
+# api-samples/ is the one the server actually reads.
+api-samples-original/
+
+# The source site's own artwork, served from dist/app/assets/. Kept locally so the
+# clone can be compared against it; not ours to redistribute.
+dist/app/assets/_source-original/
