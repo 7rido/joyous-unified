@@ -17,3 +17,7 @@ dist/app/assets/_source-original/
 
 # Rendered order-email payloads - generated, not source
 outbox/
+
+# Runtime state: admin-authored products and idempotency keys
+admin-products.json
+idempotency-keys.json

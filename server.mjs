@@ -20,6 +20,9 @@
 import { createServer } from 'node:http'
 import { wireOrderMilestones, orderEvents } from './order-emails.mjs'
 import { findPromo, discountFor, PROMO_CODES } from './promo-codes.mjs'
+import {
+  validateProduct, applyProductOverlay, saveProductOverlay, stockFor, TIERS, STOCK_MODES,
+} from './admin-products.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -38,6 +41,16 @@ const SAMPLES = join(HERE, 'api-samples')
  * silently never applied - so a hand-edited pack-deals.json was ignored entirely.
  */
 const PACK_DEALS_FILE = join(HERE, 'pack-deals.json')
+
+/**
+ * Admin-authored products and edits. Separate from the catalogue fixture on purpose:
+ * api-samples/api_products_catalog.json is the RECORDING and an admin edit must never
+ * rewrite it. Replayed onto the catalogue at boot, re-validated on load.
+ */
+const PRODUCTS_FILE = join(HERE, 'admin-products.json')
+/** Slugs created through this server, and pending patches, so saves know what to write. */
+const authoredSlugs = new Set()
+const authoredPatches = {}
 
 /**
  * Rendered order emails. Written to disk so they can be opened in a browser rather
@@ -94,6 +107,16 @@ try {
   catalogProducts = catalogProducts.concat(inventoryTests)
   console.log(`  seeded ${inventoryTests.length} inventory test products`)
 } catch { /* suite not generated */ }
+
+// The authored product overlay is applied AFTER every catalogue source, so an admin
+// edit wins, and re-validated on load so hand-editing the file is not a bypass.
+try {
+  const overlay = applyProductOverlay({ file: PRODUCTS_FILE, catalogProducts })
+  if (overlay.applied) console.log(`  product overlay: ${overlay.applied} product/patch(es) applied`)
+  for (const r of overlay.rejected) console.log(`  product overlay DROPPED: ${r}`)
+} catch (e) {
+  console.log(`  product overlay FAILED: ${e.stack ?? e.message}`)
+}
 
 // Order milestone hook. The checkout path only emits an event; what happens on that
 // event (render, log, persist) lives in order-emails.mjs.
@@ -298,6 +321,42 @@ function cartSubtotal() {
   }, 0)
 }
 
+/**
+ * Server-side admin authorization.
+ *
+ * THERE WAS NONE. /api/admin/* relied on the client's own isAdmin gate plus
+ * ADMIN_VIEW=1, so an ordinary member could call any admin route directly — "hidden
+ * from the UI" rather than "rejected by the backend".
+ *
+ * ADMIN_VIEW=1 stands in for an authenticated admin session, because the recorded
+ * /auth/me carries isAdmin for local viewing. Without it, nothing is admin.
+ */
+function requireAdmin(req, res) {
+  if (process.env.ADMIN_VIEW === '1') return true
+  res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify({ error: 'Admins only.', detail: 'Start the server with ADMIN_VIEW=1 to act as the recorded admin.' }))
+  return false
+}
+
+/** The category list, derived from the catalogue. One source, used by the admin
+ *  categories route AND by categoryId resolution on create. */
+function adminCategories() {
+  const names = [...new Set(catalogProducts.map((p) => p.category?.name ?? p.category).filter(Boolean))]
+  return names.map((name, i) => {
+    const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    return {
+      id: `cat-${slug}`, name, slug,
+      productCount: catalogProducts.filter((p) => (p.category?.name ?? p.category) === name).length,
+    }
+  })
+}
+
+/** Small JSON responder for the authored-product routes. */
+function sendJson(res, status, payload) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+  res.end(JSON.stringify(payload))
+}
+
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
 const wireStock = (n) => (n === Infinity ? UNLIMITED_STOCK : n)
 
@@ -394,6 +453,26 @@ function buildSeedCart() {
 
 /** Orders placed locally through the checkout flow. In memory only. */
 const orders = []
+
+/**
+ * Idempotency keys -> order number. DURABLE, unlike orders.
+ *
+ * The checkout contract requires an Idempotency-Key, and there was no guard at all:
+ * a double-clicked Place Order created two orders and charged twice. Orders themselves
+ * stay in RAM because a replay must not diverge from the recording, but a key has to
+ * outlive a retry — a retry can easily arrive after a restart.
+ */
+const IDEMPOTENCY_FILE = join(HERE, 'idempotency-keys.json')
+let idempotency = (() => {
+  try { return JSON.parse(readFileSync(IDEMPOTENCY_FILE, 'utf8')) } catch { return {} }
+})()
+function saveIdempotency() {
+  try {
+    const tmp = `${IDEMPOTENCY_FILE}.tmp-${process.pid}`
+    writeFileSync(tmp, `${JSON.stringify(idempotency, null, 1)}\n`)
+    renameSync(tmp, IDEMPOTENCY_FILE)
+  } catch { /* a lost key file only costs a duplicate guard, never a wrong order */ }
+}
 
 /** The promo the customer applied, if any. Cleared when the cart empties. */
 let appliedPromo = null
@@ -603,7 +682,9 @@ const server = createServer(async (req, res) => {
   })
 
   if (pathname === '/api/products/catalog' && req.method === 'GET') {
-    const products = catalogProducts.map(wireProduct)
+    // A disabled product is hidden from the storefront but NOT deleted, and the admin
+    // list still sees it because that reads catalogProducts directly.
+    const products = catalogProducts.filter((x) => x.adminHidden !== true).map(wireProduct)
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
     res.end(JSON.stringify({
       products,
@@ -617,7 +698,7 @@ const server = createServer(async (req, res) => {
   if (pathname.startsWith('/api/products/') && req.method === 'GET') {
     const key = decodeURIComponent(pathname.slice('/api/products/'.length))
     if (key && !key.includes('/')) {
-      const raw = catalogProducts.find((p) => p.slug === key || p.id === key)
+      const raw = catalogProducts.find((p) => (p.slug === key || p.id === key) && p.adminHidden !== true)
       if (raw) {
         const related = catalogProducts
           .filter((p) => p.id !== raw.id && (p.category?.name ?? p.category) === (raw.category?.name ?? raw.category))
@@ -639,6 +720,27 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/orders/create' && req.method === 'POST') {
     let body = {}
     try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+
+    // ---- IDEMPOTENCY, before anything else ---------------------------------
+    // Missing or blank keys are refused rather than defaulted: a checkout that only
+    // de-duplicates when the client remembers to ask is not protected at all.
+    const idemKey = String(req.headers['idempotency-key'] ?? '').trim()
+    if (!idemKey) {
+      sendJson(res, 400, {
+        error: 'Idempotency-Key required',
+        message: 'Send an Idempotency-Key header so a retry cannot place a second order.',
+      })
+      return
+    }
+    const priorNumber = idempotency[idemKey]
+    if (priorNumber) {
+      const prior = orders.find((o) => o.orderNumber === priorNumber)
+      console.log(`  [order] replayed ${priorNumber} for key ${idemKey.slice(0, 16)}`)
+      sendJson(res, 200, prior
+        ? { replayed: true, order: prior }
+        : { replayed: true, orderNumber: priorNumber, note: 'the original order is no longer in this session' })
+      return
+    }
     const n = orders.length + 1
     const order = {
       id: `local-order-${n}-${Date.now()}`,
@@ -711,7 +813,43 @@ const server = createServer(async (req, res) => {
     // subtotal and total are already correct; totalAmount mirrors total for
     // OrderDetail, which reads the flat money fields individually.
     order.totalAmount = order.total
+    // An order with no lines is not an order. This was reachable by POSTing an empty
+    // cart, and it created a real $0 order with zero items that then appeared in the
+    // admin list as a mystery row.
+    if (!order.items.length) {
+      console.log('  [order] REFUSED: the cart is empty')
+      sendJson(res, 400, { error: 'Nothing to order', message: 'Your cart is empty.' })
+      return
+    }
+
+    // ---- STOCK VALIDATION, before the order is committed ------------------
+    // The storefront's availability came from a manual flag and frozen markup, so
+    // nothing checked that a product was sellable, let alone that enough remained.
+    // Every line is checked against the catalogue here, and a refusal happens BEFORE
+    // the order is pushed so a rejected checkout leaves no order behind.
+    const stockProblems = []
+    for (const item of order.items) {
+      if (!item.productId) continue
+      const prod = catalogProducts.find((x) => x.id === item.productId)
+      if (!prod) { stockProblems.push('Unknown product on this order'); continue }
+      const st = stockFor(prod)
+      if (st.soldOut) {
+        stockProblems.push(`${prod.name} is sold out`)
+      } else if (st.available !== Infinity && item.quantity > st.available) {
+        stockProblems.push(`Only ${st.available} of ${prod.name} remain (asked for ${item.quantity})`)
+      }
+    }
+    if (stockProblems.length) {
+      console.log(`  [order] REFUSED: ${stockProblems[0]}`)
+      // The cart is deliberately NOT emptied: the customer must be able to fix the
+      // basket rather than lose it to a failed checkout.
+      sendJson(res, 409, { error: 'Not enough stock', message: stockProblems[0], problems: stockProblems })
+      return
+    }
+
     orders.push(order)
+    idempotency[idemKey] = order.orderNumber
+    saveIdempotency()
 
     // Decrement stock for the exact products ordered. This is what makes the numbers
     // move on the storefront AND the admin Products page: both read catalogProducts,
@@ -721,17 +859,32 @@ const server = createServer(async (req, res) => {
       const ceiling = stockCeiling(item.productId, item.variantId)
       if (!ceiling || !ceiling.variant) continue
       const v = ceiling.variant
-      const from = v.availableStock ?? v.stockQty
-      if (from === Infinity) continue          // digital/unlimited: nothing to deduct
-      const next = Math.max(0, (from ?? 0) - (item.quantity ?? 0))
-      v.availableStock = next
-      v.stockQty = next
       const prod = ceiling.prod
-      const total = (prod.variants ?? []).reduce((n, x) => {
-        const raw = x.availableStock ?? x.stockQty
-        return n + (raw === Infinity ? 0 : (raw ?? 0))
-      }, 0)
-      prod.stockQty = total
+      const mode = prod.stockMode ?? 'FLAG'
+
+      if (mode === 'FLAG') {
+        // No quantity is modelled for this product, so nothing is deducted. The flag
+        // stays the customer-visible answer, and the check above already refused a
+        // product that is sold out.
+        continue
+      }
+
+      const from = Number.isInteger(prod.stockQty) ? prod.stockQty : (v.availableStock ?? 0)
+      if (from === Infinity) continue          // digital/unlimited: nothing to deduct
+      // Math.max(0, ...) would silently swallow an oversell; the check above already
+      // refused it, so reaching here with a shortfall is a bug worth seeing.
+      const next = from - (item.quantity ?? 0)
+      if (next < 0) {
+        console.log(`  [stock] REFUSED ${prod.name}: ${from} - ${item.quantity} would go negative`)
+        sendJson(res, 409, { error: 'Not enough stock', message: `Only ${from} of ${prod.name} remain` })
+        return
+      }
+      prod.stockQty = next
+      prod.soldOut = next <= 0
+      for (const variant of prod.variants ?? []) {
+        variant.stockQty = next
+        variant.availableStock = next
+      }
       console.log(`  [stock] ${prod.name}: ${from} -> ${next} (ordered ${item.quantity})`)
     }
 
@@ -1214,6 +1367,12 @@ const server = createServer(async (req, res) => {
     // The shapes below are derived from the call sites - they are NOT recorded data.
     // Every one is empty, so pages render their own empty states rather than crashing.
     if (pathname.startsWith('/api/admin/')) {
+      // ONE check for the whole surface, before any handler runs. The three
+      // /api/admin/public/* reads are intentionally open: the storefront needs a
+      // payment-method list before sign-in, which is why they are named "public".
+      const isPublicAdminRead = pathname.startsWith('/api/admin/public/')
+      if (!isPublicAdminRead && !requireAdmin(req, res)) return
+
       // --- derived admin data ----------------------------------------------
       // No /api/admin/* response was ever observable: the live site refuses a
       // non-admin session server-side. But the DATA is not invented - it comes from
@@ -1230,6 +1389,177 @@ const server = createServer(async (req, res) => {
       //                              isVisible (no such field, so true)
       //
       // Flagged so it is never mistaken for a recorded response.
+      // --- product create / edit: the two routes that were MISSING ----------
+      // POST  /api/admin/products              create
+      // PATCH /api/admin/products/:slug        edit title, price, tier, category,
+      //                                        sold-out flag, or the stock policy
+      //
+      // Both write through the authored overlay, never the recorded fixture, and both
+      // re-validate on save so a bad value cannot be persisted by either path.
+      if (pathname === '/api/admin/products' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const takenSlugs = catalogProducts.map((x) => x.slug)
+
+        // --- normalise the create form's payload ---------------------------
+        // ProductCreatePage posts far more than the catalogue models: a variants[] array
+        // each carrying batches[], plus productType, isVisible, costPerUnit and
+        // description. Map what has a home; ignore the rest rather than 422-ing a form
+        // that is otherwise complete.
+        const firstVariant = Array.isArray(body.variants) && body.variants[0] ? body.variants[0] : null
+        if (firstVariant) {
+          const patch = {}
+          if (firstVariant.name && !body.variantName) patch.variantName = String(firstVariant.name).trim()
+          if ((body.pricePerUnit == null || body.pricePerUnit === 0) && firstVariant.pricePerUnit != null) {
+            patch.pricePerUnit = firstVariant.pricePerUnit
+          }
+          body = { ...body, ...patch }
+        }
+        if (body.description != null && body.summary == null) body = { ...body, summary: body.description }
+
+        // The create form has no slug field: it collects a name and the URL is derived
+        // from it, uniquified so a second "Smoke Widget" cannot collide with the first.
+        if (body.slug == null || String(body.slug).trim() === '') {
+          const base = String(body.name ?? body.title ?? '').trim().toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'product'
+          let slug = base, n = 2
+          while (takenSlugs.includes(slug)) slug = `${base}-${n++}`
+          body = { ...body, slug }
+        }
+        // `categoryId` names a row from /api/admin/categories; resolve it to a name so
+        // the public catalogue shows the same category the admin picked.
+        if (body.categoryId && !body.category && !body.categoryName) {
+          const cat = adminCategories().find((c) => c.id === body.categoryId)
+          if (!cat) {
+            sendJson(res, 422, { error: 'Invalid product', message: `No such category: ${body.categoryId}` })
+            return
+          }
+          body = { ...body, categoryName: cat.name }
+        }
+        // NOT named `res` — that is the HTTP response object.
+        const check = validateProduct(body, { takenSlugs })
+        if (!check.ok) {
+          console.log(`  [admin] POST product REFUSED: ${check.problems[0]}`)
+          sendJson(res, 422, { error: 'Invalid product', message: check.problems[0], problems: check.problems })
+          return
+        }
+        const v = check.value
+        const id = `authored-${v.slug}`
+        const product = {
+          id, slug: v.slug, name: v.name, isNew: true,
+          // The form sends "VIALS"; the catalogue stores a singular type label.
+          productType: body.productType ? String(body.productType).toUpperCase().replace(/S$/, '') : 'VIAL',
+          isVisible: body.isVisible !== false,
+          requiredTier: v.requiredTier ?? 'USER',
+          pricePerUnit: v.pricePerUnit,
+          stockQty: v.stockMode === 'QUANTITY' ? v.stockQty : 0,
+          stockMode: v.stockMode ?? 'FLAG',
+          saleDiscount: null,
+          soldOut: v.soldOut === true,
+          category: (() => {
+            // validateProduct emits `categoryName`; the catalogue stores an OBJECT.
+            // Dropping it here meant a created product had no category at all, and the
+            // admin form requires one.
+            // Resolve from EITHER input: the public API uses a name, the admin create
+            // form sends a categoryId from /api/admin/categories (ids are
+            // `cat-<slug>`, which is why the slug can be read straight off it).
+            let name = v.categoryName ?? null
+            let slug = name ? String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-') : null
+            if (!name && v.categoryId) {
+              const known = adminCategories().find((c) => c.id === v.categoryId)
+              if (known) { name = known.name; slug = known.slug }
+              else if (String(v.categoryId).startsWith('cat-')) {
+                slug = String(v.categoryId).slice(4)
+                name = slug.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+              }
+            }
+            if (!name) return null
+            return { id: `cat-${slug}`, name, slug, code: 'AUTHORED' }
+          })(),
+          tags: ['authored'],
+          images: v.images ?? [],
+          quantityDiscounts: [],
+          variants: [{
+            id: `${id}-default`, name: v.variantName || 'Default', isVisible: true, isDefault: true, sortOrder: 0,
+            ...(firstVariant?.costPerUnit != null ? { costPerUnit: Number(firstVariant.costPerUnit) || 0 } : {}),
+            pricePerUnit: v.pricePerUnit,
+            stockQty: v.stockMode === 'QUANTITY' ? v.stockQty : 0,
+            saleDiscount: null, quantityDiscounts: [], images: v.images ?? [],
+            availableStock: v.stockMode === 'QUANTITY' ? v.stockQty : null,
+          }],
+          summary: v.summary ?? '',
+        }
+        catalogProducts.push(product)
+        authoredSlugs.add(v.slug)
+        saveProductOverlay(PRODUCTS_FILE, { catalogProducts, authoredSlugs, authoredPatches })
+        console.log(`  [admin] created product ${v.slug} (${v.stockMode ?? 'FLAG'})`)
+        sendJson(res, 201, { ok: true, product })
+        return
+      }
+
+      const patchMatch = new RegExp('^/api/admin/products/([^/]+)$').exec(pathname)
+
+      // DELETE disables rather than destroys. A hard delete would orphan product_images
+      // rows and break any order that referenced the slug; a reversible flag keeps the
+      // catalogue's history intact. Distinct from sold out: disabled is an ADMIN
+      // decision and hides the product, sold out still shows it with a Notify-me button.
+      if (patchMatch && req.method === 'DELETE') {
+        const slug = decodeURIComponent(patchMatch[1])
+        const prod = catalogProducts.find((x) => x.slug === slug)
+        if (!prod) {
+          sendJson(res, 404, { error: 'No such product.', slug })
+          return
+        }
+        prod.adminHidden = true
+        authoredPatches[slug] = { ...(authoredPatches[slug] || {}), adminHidden: true }
+        saveProductOverlay(PRODUCTS_FILE, { catalogProducts, authoredSlugs, authoredPatches })
+        console.log(`  [admin] disabled ${slug}`)
+        sendJson(res, 200, { ok: true, disabled: true, slug })
+        return
+      }
+
+      if (patchMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
+        const slug = decodeURIComponent(patchMatch[1])
+        const prod = catalogProducts.find((x) => x.slug === slug)
+        if (!prod) {
+          sendJson(res, 404, { error: 'No such product.', slug })
+          return
+        }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const val = validateProduct(body, { partial: true, existing: prod })
+        if (!val.ok) {
+          console.log(`  [admin] PATCH ${slug} REFUSED: ${val.problems[0]}`)
+          sendJson(res, 422, { error: 'Invalid product', message: val.problems[0], problems: val.problems })
+          return
+        }
+        const patch = {}
+        for (const [k, v] of Object.entries(val.value)) {
+          if (k === 'categoryName') {
+            prod.category = v === null ? null : { id: prod.category?.id ?? `cat-${v.toLowerCase().replace(/\W+/g, '-')}`, name: v, slug: v.toLowerCase().replace(/\W+/g, '-'), code: prod.category?.code ?? 'AUTHORED' }
+            patch.categoryName = v
+            continue
+          }
+          if (k === 'images') { prod.images = v; patch.images = v; continue }
+          prod[k] = v
+          // Do NOT persist `soldOut` when it is derived. Storing it meant the next boot
+          // re-validated the patch, correctly refused a directly-set soldOut under
+          // QUANTITY, and dropped the WHOLE patch — losing the stockQty with it.
+          if (!(k === 'soldOut' && (prod.stockMode ?? 'FLAG') === 'QUANTITY')) patch[k] = v
+          if (k === 'stockQty') {
+            for (const variant of prod.variants ?? []) variant.availableStock = v
+          }
+          if (k === 'pricePerUnit' && (prod.variants ?? []).length === 1) {
+            prod.variants[0].pricePerUnit = v
+          }
+        }
+        authoredPatches[slug] = { ...(authoredPatches[slug] || {}), ...patch }
+        saveProductOverlay(PRODUCTS_FILE, { catalogProducts, authoredSlugs, authoredPatches })
+        console.log(`  [admin] patched ${slug}: ${Object.keys(patch).join(', ')}`)
+        sendJson(res, 200, { ok: true, product: prod, applied: patch })
+        return
+      }
+
       if (pathname === '/api/admin/products' && req.method === 'GET') {
         const SKU = /\/(JYS?-[A-Z]+-\d{4})-/
         const shape = (p) => {
@@ -1297,6 +1627,32 @@ const server = createServer(async (req, res) => {
           orders: orders.map((o) => ({ ...o, confirmed: o.status !== 'AWAITING_PAYMENT_REVIEW' })),
           total: orders.length, page: 1, pages: 1,
         }))
+        return
+      }
+
+      // --- confirm-payment: the ONE order status transition ------------------
+      // The real API has POST /api/admin/orders/:id/confirm-payment and the client calls
+      // it, but no route existed here, so the request fell through to the generic admin
+      // no-op fallback and answered 200 {}. The admin UI reported a confirmation that
+      // never happened.
+      const confirmMatch = new RegExp('^/api/admin/orders/([^/]+)/confirm-payment$').exec(pathname)
+      if (confirmMatch && req.method === 'POST') {
+        const ref = decodeURIComponent(confirmMatch[1])
+        const order = orders.find((o) => o.orderNumber === ref || o.id === ref)
+        if (!order) {
+          sendJson(res, 404, { error: 'No such order.', ref })
+          return
+        }
+        if (order.confirmed) {
+          // Idempotent: confirming twice is not an error, and must not double-fire
+          // anything downstream.
+          sendJson(res, 200, { order: { number: order.orderNumber, confirmed: true }, alreadyConfirmed: true })
+          return
+        }
+        order.confirmed = true
+        order.status = 'PAYMENT_CONFIRMED'
+        console.log(`  [admin] confirmed payment for ${order.orderNumber}`)
+        sendJson(res, 200, { order: { number: order.orderNumber, confirmed: true } })
         return
       }
 
@@ -1466,10 +1822,26 @@ const server = createServer(async (req, res) => {
         return
       }
 
+      // The three option lists behind every product form. The client reads
+      // `t.data.categories`, `r.data.tags`, `a.data.collections` — OBJECTS with a named
+      // key, not bare arrays. Returning arrays meant `undefined || []` and every
+      // dropdown rendered empty, including the category picker on New product.
       if (pathname === '/api/admin/categories' && req.method === 'GET') {
-        const names = [...new Set(catalogProducts.map((p) => p.category?.name ?? p.category).filter(Boolean))]
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-        res.end(JSON.stringify(names.map((n, i) => ({ id: `cat-${i + 1}`, name: n, slug: String(n).toLowerCase(), productCount: catalogProducts.filter((p) => (p.category?.name ?? p.category) === n).length }))))
+        sendJson(res, 200, { categories: adminCategories() })
+        return
+      }
+      if (pathname === '/api/admin/tags' && req.method === 'GET') {
+        const tags = [...new Set(catalogProducts.flatMap((p) => p.tags ?? []))]
+          .filter((t) => typeof t === 'string' && t && !t.includes(':'))
+          .sort()
+          .map((name, i) => ({ id: `tag-${name}`, name, slug: name, productCount: catalogProducts.filter((p) => (p.tags ?? []).includes(name)).length }))
+        sendJson(res, 200, { tags })
+        return
+      }
+      if (pathname === '/api/admin/collections' && req.method === 'GET') {
+        // No collection concept exists in the catalogue, so this is honestly empty —
+        // but shaped correctly, so the form shows an empty list rather than breaking.
+        sendJson(res, 200, { collections: [] })
         return
       }
 

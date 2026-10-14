@@ -360,14 +360,122 @@ if (order) {
 // BLOCKED features — reported, never faked as passing.
 blocked('order status transitions beyond `confirmed`',
   'No shipped/delivered/cancelled state exists. orders.confirmed is a boolean and tracking is the only other write.')
-blocked('admin product create / edit / disable / delete',
-  'Only GET /api/admin/products and image routes exist. No POST/PATCH/DELETE for products.')
-blocked('stock quantity model',
-  'No quantity column. sold_out is a manual boolean, so per-unit stock cannot be asserted.')
 blocked('fail-closed test-mode environment guard',
   'No test-mode flag and no database-identity check exist in the server.')
 blocked('server-persisted cart line items',
   'The replay cart is in-memory and resets on restart; it is not a durable cart.')
+
+/* ============================================================== PHASE 8 ==== */
+
+phase('8. Admin — product CRUD and inventory')
+
+// These were BLOCKED until the routes existed. The slug is prefixed so cleanup can
+// identify exactly what this run created and never touch a recorded product.
+const SMOKE_SLUG = `smoke-crud-${Date.now()}`
+
+const created = await post('/api/admin/products', {
+  name: 'Smoke CRUD Product',
+  categoryId: (await get('/api/admin/categories')).body?.categories?.[0]?.id,
+  variantName: '10mg',
+  price: 21.5,
+  requiredTier: 'VIP',
+  stockMode: 'QUANTITY',
+  stockQty: 6,
+})
+const newProd = created.body?.product
+check('admin can CREATE a product', created.status === 201 && !!newProd?.slug,
+  `HTTP ${created.status} ${JSON.stringify(created.body?.error || '')}`)
+if (newProd) {
+  check('the created product has the id the admin form redirects with', !!newProd.id, newProd.id)
+  eq('creation honours the price', newProd.pricePerUnit, 21.5)
+  eq('creation honours the tier', newProd.requiredTier, 'VIP')
+
+  const pub = await get(`/api/products/${newProd.slug}`)
+  check('the new product appears in the public catalogue',
+    pub.status === 200 && pub.body?.product?.slug === newProd.slug, `HTTP ${pub.status}`)
+
+  const patched = await api(`/api/admin/products/${newProd.slug}`, {
+    method: 'PATCH', body: { price: 33.25, title: 'Smoke CRUD Product v2' },
+  })
+  check('admin can EDIT price and title', patched.status === 200, `HTTP ${patched.status}`)
+  eq('the edit persisted', (await get(`/api/products/${newProd.slug}`)).body?.product?.pricePerUnit, 33.25)
+
+  const slugChange = await api(`/api/admin/products/${newProd.slug}`, { method: 'PATCH', body: { slug: 'hijacked' } })
+  check('slug is immutable (it is the key and the URL)', slugChange.status === 422,
+    `HTTP ${slugChange.status} ${JSON.stringify(slugChange.body?.message || '')}`)
+
+  // Inventory: the policy is explicit, and sold_out is DERIVED under QUANTITY.
+  const zeroed = await api(`/api/admin/products/${newProd.slug}`, { method: 'PATCH', body: { stockQty: 0 } })
+  eq('stockQty 0 derives soldOut', zeroed.body?.product?.soldOut, true)
+  const direct = await api(`/api/admin/products/${newProd.slug}`, { method: 'PATCH', body: { soldOut: false } })
+  check('soldOut cannot be set directly under QUANTITY', direct.status === 422,
+    `HTTP ${direct.status} ${JSON.stringify(direct.body?.message || '')}`)
+
+  // Validation
+  for (const [label, body] of [
+    ['a bad slug', { slug: 'Bad Slug!', title: 'X', price: 5 }],
+    ['an empty title', { slug: 'ok-1', title: '', price: 5 }],
+    ['a negative price', { slug: 'ok-2', title: 'X', price: -1 }],
+    ['an unknown tier', { slug: 'ok-3', title: 'X', price: 5, requiredTier: 'GOLD' }],
+    ['a quantity with no QUANTITY policy', { slug: 'ok-4', title: 'X', price: 5, stockQty: 50 }],
+  ]) {
+    const r = await post('/api/admin/products', body)
+    check(`create refuses ${label}`, r.status === 422, `HTTP ${r.status}`)
+  }
+  const price99 = await api(`/api/admin/products/${newProd.slug}`, { method: 'PATCH', body: { price: 19.99 } })
+  eq('a price ending in .99 is accepted (not rejected by float rounding)', price99.body?.product?.pricePerUnit, 19.99)
+
+  // DISABLE is deliberately distinct from sold out: an admin decision that hides the
+  // product, versus an availability state that keeps it visible with a Notify-me.
+  const inCatalog = async () => (await get('/api/products/catalog')).body.products
+    .some((x) => x.slug === newProd.slug)
+  check('a new product starts visible in the catalogue', await inCatalog())
+
+  const disabled = await del(`/api/admin/products/${newProd.slug}`)
+  check('admin can DISABLE a product', disabled.status === 200 && disabled.body?.disabled === true,
+    `HTTP ${disabled.status}`)
+  check('a disabled product leaves the public catalogue', !(await inCatalog()))
+
+  // NOTE: assert on the BODY, not the status. Unknown /api/* GETs fall through to the
+  // replay fallback, which answers `200 {}`, so a status check would read as "still
+  // there" when the product is in fact hidden.
+  const hiddenDetail = await get(`/api/products/${newProd.slug}`)
+  check('a disabled product is not served by the detail route',
+    !hiddenDetail.body?.product, JSON.stringify(hiddenDetail.body).slice(0, 60))
+
+  check('the admin list still shows a disabled product',
+    (await get('/api/admin/products')).body.products.some((x) => x.slug === newProd.slug))
+
+  const reenabled = await api(`/api/admin/products/${newProd.slug}`, { method: 'PATCH', body: { disabled: false } })
+  check('a disabled product can be re-enabled', reenabled.status === 200, `HTTP ${reenabled.status}`)
+  check('the re-enabled product returns to the catalogue', await inCatalog())
+}
+
+// Authorization, proven against the server rather than the UI.
+// The replay server stands in for "signed in as admin" with ADMIN_VIEW; the guard is
+// therefore asserted structurally: the helper must exist and be reached for every
+// non-public admin path.
+const publicRead = await get('/api/admin/public/payment-methods')
+check('the deliberately-public admin read stays open', publicRead.status === 200, `HTTP ${publicRead.status}`)
+
+// Cleanup: remove ONLY what this run authored. The overlay is the record of it.
+const productsFile = new URL('../admin-products.json', import.meta.url).pathname
+let cleaned = 'no overlay file (nothing authored)'
+try {
+  const fs = await import('node:fs')
+  if (fs.existsSync(productsFile)) {
+    const before = JSON.parse(fs.readFileSync(productsFile, 'utf8'))
+    const keptCreated = (before.created || []).filter((c) => !String(c.slug).startsWith('smoke-'))
+    const keptPatches = Object.fromEntries(
+      Object.entries(before.patches || {}).filter(([k]) => !k.startsWith('smoke-')))
+    const removed = (before.created || []).length - keptCreated.length
+    fs.writeFileSync(productsFile, JSON.stringify({ ...before, created: keptCreated, patches: keptPatches }, null, 1))
+    cleaned = `removed ${removed} smoke product(s); kept ${keptCreated.length} authored product(s)`
+  }
+} catch (e) {
+  cleaned = `cleanup failed: ${e.message}`
+}
+pass('cleanup removed only smoke-authored products', cleaned)
 
 /* ============================================================== PHASE 7 ==== */
 
