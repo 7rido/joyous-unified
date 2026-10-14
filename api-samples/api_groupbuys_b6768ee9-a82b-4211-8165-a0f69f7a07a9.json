@@ -4,12 +4,12 @@
   "name": "Adamax 1032da",
   "description": "Adamax 1032da (full sequence to include the adamantane moiety).\nTesting:  Mass | Purity | Identification | 2 vial variance\n\nAdamax is a neuropeptide research compound studied in laboratory models involving neuroprotective pathway research, cognitive signaling models, stress-response biology, peptide stability studies, central nervous system regulation, and neuroendocrine communication.",
   "vendorName": "Supplier 22",
-  "status": "CLOSED",
+  "status": "OPEN",
   "posterUrl": "/uploads/groupbuy-posters/333e6e8f-7826-46eb-9ed6-3db81085c0ea.png",
   "requiredTier": "USER",
   "coaPrice": 75,
-  "opensAt": "2026-10-06T15:00:00.000Z",
-  "closesAt": "2026-10-14T02:00:00.000Z",
+  "opensAt": "2026-10-12T10:35:44.055355Z",
+  "closesAt": "2026-10-19T10:35:44.055355Z",
   "estimatedShip": null,
   "items": [
    {
@@ -79,6 +79,7 @@
   ],
   "updates": [],
   "createdAt": "2026-10-05T16:08:18.621Z",
-  "updatedAt": "2026-10-14T02:04:00.754Z"
+  "updatedAt": "2026-10-14T02:04:00.754Z",
+  "__statusNote": "status CLOSED -> OPEN locally so the join flow is reachable"
  }
 }

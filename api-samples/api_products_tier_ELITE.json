@@ -1,0 +1,773 @@
+{
+ "__mock": "generated - the live API refuses ELITE to a VIP session (403)",
+ "products": [
+  {
+   "id": "25b279da-149c-5e40-be2f-bbee79586b04",
+   "name": "Elite GLOW-1 \u2014 Cellular Renewal Complex",
+   "slug": "elite-glow-1-cellular-renewal-complex",
+   "isNew": true,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 120,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "0a91ded3-893c-5959-aa0a-7632579b613a",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 120,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "3aeb2b12-6ee1-5e46-b8e7-34fb86b709d7",
+       "variantId": "0a91ded3-893c-5959-aa0a-7632579b613a",
+       "minQuantity": 5,
+       "packPrice": 560,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "bf2d108f-f687-5d80-bc15-62d1235fdfa8",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 160,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "03ffc76a-9465-57eb-b5e9-fcbf08de63ca",
+       "variantId": "bf2d108f-f687-5d80-bc15-62d1235fdfa8",
+       "minQuantity": 5,
+       "packPrice": 760,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "5355a721-0722-5a2b-8aa1-948ac2befb38",
+   "name": "Elite NAD+ Ultra \u2014 Mitochondrial Support",
+   "slug": "elite-nad-ultra-mitochondrial-support",
+   "isNew": true,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 135,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0016-1769837049520.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "e9d3e810-62be-562f-97e1-ad602c3961a5",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 135,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "96471667-7ba2-5ecb-a1e1-4ed3c8fd66c6",
+       "variantId": "e9d3e810-62be-562f-97e1-ad602c3961a5",
+       "minQuantity": 5,
+       "packPrice": 635,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0016-1769837049520.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "471d330c-8898-5c89-b94f-edfc29ae7add",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 175,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "696e463d-efb5-5018-8785-f4939c0f5831",
+       "variantId": "471d330c-8898-5c89-b94f-edfc29ae7add",
+       "minQuantity": 5,
+       "packPrice": 835,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JOY-CAP-0016-1769837049520.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "bcc5e91f-66d0-54f4-8059-d5ad1ecd0662",
+   "name": "Elite EPITHALON \u2014 Longevity Research Peptide",
+   "slug": "elite-epithalon-longevity-research-peptide",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 150,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-BAR-0002-1791818223627.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "39be82a4-7639-545e-a485-fb7204d6c8cd",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 150,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "276125e2-2e40-5e1b-8db9-aeb4e5e70824",
+       "variantId": "39be82a4-7639-545e-a485-fb7204d6c8cd",
+       "minQuantity": 5,
+       "packPrice": 710,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-BAR-0002-1791818223627.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "bec77ad3-1aab-5285-a6d4-46f60ed11dbe",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 190,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "5a456c38-65ec-5d2b-940b-4763148efa54",
+       "variantId": "bec77ad3-1aab-5285-a6d4-46f60ed11dbe",
+       "minQuantity": 5,
+       "packPrice": 910,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-BAR-0002-1791818223627.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "0c06adc4-8800-5504-be6c-b060dd92fb57",
+   "name": "Elite SS-31 Elamipretide \u2014 Cardiolipin Research",
+   "slug": "elite-ss-31-elamipretide-cardiolipin",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 165,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0004-1771805062097.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "aa4c700a-0a1b-59c9-b11d-2000f25a43ba",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 165,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "6daae035-fbee-56ad-bf33-64b515d6bc4e",
+       "variantId": "aa4c700a-0a1b-59c9-b11d-2000f25a43ba",
+       "minQuantity": 5,
+       "packPrice": 785,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0004-1771805062097.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "abf3472c-6b3e-51f3-97b6-fc8a3f8d8323",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 205,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "abc30abc-555f-5b32-a505-848c615f8dcb",
+       "variantId": "abf3472c-6b3e-51f3-97b6-fc8a3f8d8323",
+       "minQuantity": 5,
+       "packPrice": 985,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0004-1771805062097.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "00c3520f-6490-534b-b7e7-342091bd3f02",
+   "name": "Elite THYMOSIN A1 \u2014 Immune Signaling Reference",
+   "slug": "elite-thymosin-a1-immune-signaling",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 180,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0021-1791827661980.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "9f9b15d8-c3cc-58d5-8f3d-61281d5b1c31",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 180,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "40d3865a-ce96-545a-9809-4a4e6a3c3395",
+       "variantId": "9f9b15d8-c3cc-58d5-8f3d-61281d5b1c31",
+       "minQuantity": 5,
+       "packPrice": 860,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0021-1791827661980.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "4911fe8f-f1ad-58ec-bc53-26eba6067469",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 220,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "403d94df-b32f-56c6-91a6-bc2e7384ef4b",
+       "variantId": "4911fe8f-f1ad-58ec-bc53-26eba6067469",
+       "minQuantity": 5,
+       "packPrice": 1060,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0021-1791827661980.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "e8ee3f8b-cab6-5546-82e9-89c4eab568c7",
+   "name": "Elite MOTS-C \u2014 Metabolic Signaling Reference",
+   "slug": "elite-mots-c-metabolic-signaling",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 195,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0027-1772049364605.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "97c9eb5b-f515-5864-a763-a211b99cc9be",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 195,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "143fd85c-3351-5a2a-b917-cd2e61cc4b26",
+       "variantId": "97c9eb5b-f515-5864-a763-a211b99cc9be",
+       "minQuantity": 5,
+       "packPrice": 935,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0027-1772049364605.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "f542fab5-07a4-511d-8111-525ee3e6dc9f",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 235,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "931d6ede-4ca5-5841-8128-6a5c7d3126fa",
+       "variantId": "f542fab5-07a4-511d-8111-525ee3e6dc9f",
+       "minQuantity": 5,
+       "packPrice": 1135,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CAP-0027-1772049364605.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "53698b9a-4761-5427-8746-8c3c24bb93c9",
+   "name": "Elite FOXO4-DRI \u2014 Senolytic Research Compound",
+   "slug": "elite-foxo4-dri-senolytic",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 210,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CEL-0003-1791818152582.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "07bd90c5-eeab-51ae-ab74-7bf52cda3504",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 210,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "b061dde1-4fae-5bdf-90f7-eef828362194",
+       "variantId": "07bd90c5-eeab-51ae-ab74-7bf52cda3504",
+       "minQuantity": 5,
+       "packPrice": 1010,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CEL-0003-1791818152582.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "d2cd5dad-b197-5560-8e48-c136f8581e15",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 250,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "5195b888-6cad-5fb5-a78a-b7ed50519818",
+       "variantId": "d2cd5dad-b197-5560-8e48-c136f8581e15",
+       "minQuantity": 5,
+       "packPrice": 1210,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-CEL-0003-1791818152582.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  },
+  {
+   "id": "ee7655d1-856d-57c3-9f15-65c6f5278c21",
+   "name": "Elite HUMANIN \u2014 Cytoprotective Reference",
+   "slug": "elite-humanin-cytoprotective",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "ELITE",
+   "pricePerUnit": 225,
+   "stockQty": 65,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [
+    "elite",
+    "mock"
+   ],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-GRO-0004-1791740081698.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "fe0226af-405e-56f6-8afe-1e8e87bf29a6",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 225,
+     "stockQty": 25,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "603481f3-e3ed-55af-9d9d-56401c92d43d",
+       "variantId": "fe0226af-405e-56f6-8afe-1e8e87bf29a6",
+       "minQuantity": 5,
+       "packPrice": 1085,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-GRO-0004-1791740081698.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 25
+    },
+    {
+     "id": "cb6025f3-c64a-5b3b-823a-1e1b39e029ce",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 265,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "62e91ca3-4606-58a7-8c2c-55ac849f60a9",
+       "variantId": "cb6025f3-c64a-5b3b-823a-1e1b39e029ce",
+       "minQuantity": 5,
+       "packPrice": 1285,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
+     "images": [
+      {
+       "url": "/uploads/products/JYS-GRO-0004-1791740081698.webp",
+       "sortOrder": 0
+      }
+     ],
+     "availableStock": 40
+    }
+   ],
+   "__mock": true
+  }
+ ]
+}

@@ -122,6 +122,9 @@ function buildSeedCart() {
   return items
 }
 
+/** Orders placed locally through the checkout flow. In memory only. */
+const orders = []
+
 /** Back-in-stock subscriptions, counted for the dashboard tile. */
 let stockSubscriptions = 0
 try {
@@ -291,6 +294,87 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': String(body.length) })
     res.end(body)
     return
+  }
+
+  // --- order creation and payment proof ---------------------------------
+  // These are the two endpoints a checkout ENDS on, and neither can be recorded: one
+  // creates an order and the other accepts an upload. Synthesised here so the flow
+  // completes and the result is visible in the admin panel. What is real: the items,
+  // the address, the pricing and the uploaded file. What is invented: the order
+  // number and the storage.
+  if (pathname === '/api/orders/create' && req.method === 'POST') {
+    let body = {}
+    try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+    const n = orders.length + 1
+    const order = {
+      id: `local-order-${n}-${Date.now()}`,
+      orderNumber: `JY-${String(1000 + n)}`,
+      status: 'AWAITING_PAYMENT_REVIEW',
+      items: cart.map((line) => {
+        const prod = line.product ?? {}
+        const gi = line.groupBuyItem ?? {}
+        const v = line.variant ?? {}
+        const qty = line.quantity ?? 1
+        const unit = line.packPrice ?? v.pricePerUnit ?? prod.pricePerUnit ?? gi.pricePerUnit ?? 0
+        return {
+          id: line.id, quantity: qty, productId: line.productId ?? null,
+          groupBuyItemId: line.groupBuyItemId ?? null, variantId: line.variantId ?? null,
+          name: gi.name ?? (v.name ? `${prod.name ?? ''} - ${v.name}` : (prod.name ?? 'Item')),
+          unitPrice: unit, totalPrice: unit * qty,
+        }
+      }),
+      shippingAddress: body.shippingAddress ?? body.address ?? null,
+      payment: body.payment ?? { method: body.paymentMethod ?? null, transactionHash: body.paymentProof?.transactionHash ?? null },
+      paymentProof: null,
+      total: cart.reduce((sum, line) => {
+        const v = line.variant ?? {}; const prod = line.product ?? {}; const gi = line.groupBuyItem ?? {}
+        const unit = line.packPrice ?? v.pricePerUnit ?? prod.pricePerUnit ?? gi.pricePerUnit ?? 0
+        return sum + unit * (line.quantity ?? 1)
+      }, 0),
+      createdAt: new Date().toISOString(),
+      __local: 'created by the local replay; not a real order',
+    }
+    orders.push(order)
+    cart = []                    // a placed order empties the cart
+    console.log(`  [order] created ${order.orderNumber} with ${order.items.length} item(s)`)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ order }))
+    return
+  }
+
+  if (pathname === '/api/payments/crypto/upload-screenshot' && req.method === 'POST') {
+    // multipart/form-data: file + orderId. The bytes are accepted and discarded -
+    // storing an uploaded payment proof is not something a replay should pretend to do.
+    const raw = await readBody(req)
+    const idMatch = raw.match(/name="orderId"\s*\r?\n\r?\n([^\r\n]+)/)
+    const orderId = idMatch?.[1]?.trim() ?? null
+    const order = orders.find((o) => o.id === orderId)
+    if (order) {
+      order.paymentProof = { uploadedAt: new Date().toISOString(), bytes: raw.length, stored: false }
+      order.status = 'PAYMENT_UNDER_REVIEW'
+      console.log(`  [order] payment proof for ${order.orderNumber}: ${raw.length} bytes (discarded)`)
+    } else {
+      console.log(`  [order] payment proof upload for unknown order ${orderId}`)
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ ok: true, orderId }))
+    return
+  }
+
+  // The order list, so a placed order is visible afterwards.
+  if (pathname === '/api/orders' && req.method === 'GET' && orders.length) {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({ orders }))
+    return
+  }
+  if (pathname.startsWith('/api/orders/') && req.method === 'GET') {
+    const id = pathname.split('/').pop()
+    const order = orders.find((o) => o.id === id || o.orderNumber === id)
+    if (order) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ order }))
+      return
+    }
   }
 
   // --- promo codes -------------------------------------------------------
@@ -682,6 +766,13 @@ const server = createServer(async (req, res) => {
       // and reads  i[a.listKey] || []  and  i.statsAll || i.stats.
       // The campaign rows are the RECORDED campaigns, statuses already in the
       // vocabulary the page switches on (CLOSED, SHIPPING_TO_CUSTOMERS, ...).
+      if (pathname === '/api/admin/orders' && req.method === 'GET' && orders.length) {
+        console.log(`  [admin] /admin/orders -> ${orders.length} locally placed order(s)`)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ orders, total: orders.length, page: 1, pages: 1 }))
+        return
+      }
+
       if (pathname === '/api/admin/users' && req.method === 'GET') {
         // The only account the recording contains - already sanitised, so no real
         // details are involved. Served so the directory is not empty and the seeded
