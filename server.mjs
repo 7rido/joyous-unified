@@ -538,6 +538,32 @@ const server = createServer(async (req, res) => {
     // already uses, so the same object is returned for login, register and me.
     // NO CREDENTIAL IS CHECKED - any email and password are accepted, because
     // there is no backend behind this.
+    // --- TEMPORARY ADMIN SEED -------------------------------------------
+    // The admin gate is:  !!user.isAdmin && (await GET /auth/me).user.isAdmin
+    //   - a cached isAdmin on the store passes it for 5 minutes, then it re-verifies
+    //   - a real verification call is made on first mount
+    // so the RECORDED /auth/me must itself carry isAdmin: true, not just localStorage.
+    //
+    // The recorded account is deliberately isAdmin:false, because the real session is
+    // VIP and not an admin. ADMIN_VIEW=1 promotes that single field for local viewing:
+    //
+    //     ADMIN_VIEW=1 node server.mjs 4400
+    //
+    // This is a LOCAL VIEWING SEED. It grants nothing real - every /api/admin/*
+    // endpoint is unrecorded and answers 501 - and it is off unless the flag is set.
+    if (pathname === '/api/auth/me' && process.env.ADMIN_VIEW === '1') {
+      try {
+        const raw = JSON.parse(await readFile(join(SAMPLES, 'api_auth_me.json'), 'utf8'))
+        if (raw?.user) {
+          raw.user.isAdmin = true
+          raw.user.__localAdminSeed = true
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          res.end(JSON.stringify(raw))
+          return
+        }
+      } catch { /* fall through to the recording */ }
+    }
+
     if (pathname === '/api/auth/login' || pathname === '/api/auth/register') {
       let user = null
       try {
@@ -574,6 +600,61 @@ const server = createServer(async (req, res) => {
       const body = await readFile(file)
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(body)
+      return
+    }
+
+    // --- unrecorded ADMIN endpoints --------------------------------------
+    // Admin access was never available, so no /api/admin/* response was ever
+    // observed. Returning {} made pages die on shape, not on data:
+    //
+    //   /admin/spotlight   -> /admin/storefront  TypeError: J.filter is not a function
+    //     the page does `l(y.data || [])` then filters; {} is truthy, [] is not an array
+    //   /admin/activity-log -> TypeError: reading 'configured'
+    //     needs the facets object, and the list needs {logs,total,pages,...}
+    //
+    // The shapes below are derived from the call sites - they are NOT recorded data.
+    // Every one is empty, so pages render their own empty states rather than crashing.
+    if (pathname.startsWith('/api/admin/')) {
+      const EMPTY_ARRAY = new Set([
+        '/api/admin/spotlight/products',
+        '/api/admin/categories', '/api/admin/collections', '/api/admin/tags',
+        '/api/admin/tickets', '/api/admin/support/tickets',
+        '/api/admin/users', '/api/admin/orders', '/api/admin/discounts',
+        '/api/admin/fees/settlement-wallets', '/api/admin/newsletter/subscribers',
+      ])
+      const SHAPES = {
+        // The activity page does `n(N.value.data.stats || null)` off /admin/demand,
+        // so it must be an object carrying `stats` - an empty array gave undefined.
+        '/api/admin/demand': { stats: { inTransit: 0, lastEventAt: null }, rows: [], items: [] },
+        '/api/admin/activity-logs': { logs: [], total: 0, pages: 1, actors: {}, resources: {} },
+        '/api/admin/activity-logs/facets': { resourceTypes: [], actions: [], admins: [] },
+        // The activity page destructures nested groups off this and reads them
+        // WITHOUT optional chaining:
+        //     const c = t?.shipstation, p = t?.webhook, d = t?.trackingJob
+        //     ... p.lastEventAt        <- p undefined if `webhook` is absent
+        // The groups must therefore be PRESENT and hold their expected keys, not just
+        // be omitted for being "empty".
+        '/api/admin/system/health': {
+          configured: false, ok: true, database: 'ok', storage: 'ok',
+          version: 'local-replay',
+          shipstation: { configured: false, fromAddress: null },
+          webhook: { lastEventAt: null, inTransit: 0 },
+          trackingJob: { running: false, lastStartedAt: null },
+          email: { configured: false },
+          payments: { configured: false },
+        },
+        '/api/admin/dashboard/today': { delivered: 0, shipped: 0, newOrders: 0 },
+        '/api/admin/dashboard/counts': {
+          ordersToShip: 0, todaysPayments: 0, needsReply: 0, awaitingApproval: 0,
+          backInStockWaiting: 0, todaysSales: 0, awaitingPayment: 0,
+        },
+        '/api/admin/spotlight/settings': { enabled: false, products: [] },
+      }
+      const body = SHAPES[pathname] ?? (EMPTY_ARRAY.has(pathname) ? [] : {})
+      notRecorded.add(`${req.method} ${pathname}`)
+      console.warn(`  [admin] ${pathname} -> empty ${Array.isArray(body) ? 'array' : 'shape'} (never recorded)`)
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify(body))
       return
     }
 
