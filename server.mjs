@@ -19,7 +19,7 @@
 
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,16 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIST = join(HERE, 'dist')
 const SAMPLES = join(HERE, 'api-samples')
+
+/**
+ * Pack-deal overlay state. Declared up here WITH the other path constants, because
+ * `const` is hoisted but not initialised: defining these further down meant the
+ * boot-time applyPackDeals() threw "Cannot access 'PACK_DEALS_FILE' before
+ * initialization", the catch reported it as a generic failure, and the overlay
+ * silently never applied - so a hand-edited pack-deals.json was ignored entirely.
+ */
+const PACK_DEALS_FILE = join(HERE, 'pack-deals.json')
+const packDeals = { __applied: 0, __rejected: [] }
 const PORT = Number(process.argv[2] ?? 4400)
 const VERBOSE = process.env.UNIFIED_LOG === '1'
 /** Every endpoint asked for but never recorded, exposed at /__gaps for auditing. */
@@ -74,6 +84,16 @@ try {
   catalogProducts = catalogProducts.concat(inventoryTests)
   console.log(`  seeded ${inventoryTests.length} inventory test products`)
 } catch { /* suite not generated */ }
+
+// The overlay is applied after every catalogue source, so an authored pack deal wins.
+try {
+  const n = applyPackDeals()
+  if (n) console.log(`  pack-deal overlay: ${n} deal(s) applied`)
+} catch (e) {
+  // Loud, with the stack. A quiet one-line message here is what hid a TDZ bug that
+  // disabled the entire overlay and made hand-edits to pack-deals.json silently inert.
+  console.log(`  pack-deal overlay FAILED: ${e.stack ?? e.message}`)
+}
 
 /**
  * THE PRICE AUTHORITY.
@@ -124,6 +144,110 @@ function resolveLinePrice(line) {
     // says can be reported rather than silently applied.
     forged: line.packPrice != null && line.packPrice !== unitPrice ? line.packPrice : null,
   }
+}
+
+/**
+ * Pack-deal validation. THIS is the rule that keeps a "pack discount" a discount.
+ *
+ * A pack is only a deal if it costs less than the same units bought singly. Nothing
+ * enforced that before, so a typo in an admin form could persist a markup (or a
+ * negative price) and - now that resolveLinePrice treats the stored packPrice as
+ * authoritative - that value would be charged.
+ *
+ * Returns an array of human-readable problems. Empty means valid.
+ */
+function validatePackDeal(deal, unitPrice) {
+  const errs = []
+  if (deal == null || typeof deal !== 'object') return ['deal must be an object']
+
+  const mq = deal.minQuantity
+  if (!Number.isInteger(mq) || mq < 2) {
+    errs.push(`minQuantity must be a whole number of 2 or more (got ${JSON.stringify(mq)})`)
+  }
+
+  const pp = deal.packPrice
+  if (typeof pp !== 'number' || !Number.isFinite(pp) || !(pp > 0)) {
+    errs.push(`packPrice must be a number greater than 0 (got ${JSON.stringify(pp)})`)
+  }
+
+  if (typeof unitPrice === 'number' && Number.isFinite(unitPrice) && unitPrice >= 0 &&
+      Number.isInteger(mq) && mq >= 2 && typeof pp === 'number' && Number.isFinite(pp)) {
+    const singles = unitPrice * mq
+    if (pp >= singles) {
+      errs.push(`packPrice ${pp} must be below ${mq} x ${unitPrice} = ${singles}; at or above it this is a markup, not a deal`)
+    }
+  }
+
+  for (const f of ['saleDiscount', 'discountPercent']) {
+    const v = deal[f]
+    if (v != null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) {
+      errs.push(`${f} must be a non-negative number or null (got ${JSON.stringify(v)})`)
+    }
+  }
+  const mpo = deal.maxPerOrder
+  if (mpo != null && (!Number.isInteger(mpo) || mpo < 1)) {
+    errs.push(`maxPerOrder must be a positive whole number or null (got ${JSON.stringify(mpo)})`)
+  }
+  return errs
+}
+
+/**
+ * PACK-DEAL OVERLAY - the only durable state in this server.
+ *
+ * Everything else (cart, orders, stock decrements, wishlist) lives in RAM and resets
+ * on restart, because a replay must not silently diverge from the recording. Pack
+ * deals are the deliberate exception: they are authored data, so an edit has to
+ * survive, and keeping them in a separate file leaves the recorded samples untouched.
+ *
+ * Shape: { "<productId>": { "<variantId>": [deal, ...] } }
+ */
+
+function readPackDealsFile() {
+  try {
+    const raw = JSON.parse(readFileSync(PACK_DEALS_FILE, 'utf8'))
+    delete raw.__comment
+    return raw
+  } catch {
+    return {}
+  }
+}
+
+/** Apply the overlay onto catalogProducts. Called at boot and after every edit. */
+function applyPackDeals() {
+  const all = readPackDealsFile()
+  let applied = 0
+  const rejected = []
+  for (const [productId, byVariant] of Object.entries(all)) {
+    const prod = catalogProducts.find((x) => x.id === productId)
+    if (!prod) continue
+    for (const [variantId, deals] of Object.entries(byVariant ?? {})) {
+      const variant = (prod.variants ?? []).find((v) => v.id === variantId)
+      if (!variant) continue
+      // Re-validated on LOAD, not just on write. The file is editable by hand, so
+      // writing a bad deal into it must not be a way around the guard.
+      const unitPrice = variant.pricePerUnit ?? prod.pricePerUnit
+      const list = Array.isArray(deals) ? deals : []
+      const good = []
+      for (const deal of list) {
+        const errs = validatePackDeal(deal, unitPrice)
+        if (errs.length) rejected.push(`${prod.name} ${deal?.minQuantity}-pack: ${errs[0]}`)
+        else good.push(deal)
+      }
+      variant.quantityDiscounts = good
+      applied += good.length
+    }
+  }
+  packDeals.__applied = applied
+  packDeals.__rejected = rejected
+  for (const r of rejected) console.log(`  [pack-deals] DROPPED invalid stored deal -> ${r}`)
+  return applied
+}
+
+/** Atomic write: a crash mid-write must not leave a truncated catalogue overlay. */
+function writePackDealsFile(all) {
+  const tmp = `${PACK_DEALS_FILE}.tmp-${process.pid}`
+  writeFileSync(tmp, `${JSON.stringify(all, null, 1)}\n`)
+  renameSync(tmp, PACK_DEALS_FILE)
 }
 
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
@@ -1084,6 +1208,106 @@ const server = createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
         res.end(JSON.stringify({ orders, total: orders.length, page: 1, pages: 1 }))
         return
+      }
+
+      // --- pack deals: the one AUTHORED, PERSISTED surface ------------------
+      // GET    /api/admin/products/<productId>/variants/<variantId>/pack-deals
+      // PUT    same path, body [deal, ...]  -> validates, replaces, persists
+      // DELETE same path                    -> clears this variant's deals
+      //
+      // Every write is validated by validatePackDeal before anything is stored, so a
+      // markup or a negative price cannot be persisted. That is the guard: it lives on
+      // the write path, because by checkout time a bad deal is already the price of
+      // record.
+      const packDealMatch = new RegExp('^/api/admin/products/([^/]+)/variants/([^/]+)/pack-deals$').exec(pathname)
+      if (packDealMatch) {
+        const [, productId, variantId] = packDealMatch
+        const prod = catalogProducts.find((x) => x.id === productId)
+        const variant = prod && (prod.variants ?? []).find((v) => v.id === variantId)
+        if (!prod || !variant) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'Not found', message: 'No such product or variant.' }))
+          return
+        }
+        const unitPrice = variant.pricePerUnit ?? prod.pricePerUnit
+
+        if (req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          res.end(JSON.stringify({
+            productId, variantId, unitPrice,
+            packDeals: variant.quantityDiscounts ?? [],
+            persisted: existsSync(PACK_DEALS_FILE),
+          }))
+          return
+        }
+
+        if (req.method === 'PUT' || req.method === 'POST') {
+          let body = {}
+          try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+          const incoming = Array.isArray(body) ? body : (body.packDeals ?? (body.minQuantity != null ? [body] : null))
+          if (!Array.isArray(incoming)) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ error: 'Invalid payload', message: 'Send an array of pack deals, or one deal object.' }))
+            return
+          }
+
+          // Validate ALL of them before writing ANY - a rejected batch must leave the
+          // previous deals exactly as they were.
+          const problems = []
+          incoming.forEach((deal, i) => {
+            for (const e of validatePackDeal(deal, unitPrice)) problems.push({ index: i, problem: e })
+          })
+          const seen = new Set()
+          incoming.forEach((deal, i) => {
+            if (seen.has(deal.minQuantity)) problems.push({ index: i, problem: `duplicate minQuantity ${deal.minQuantity}` })
+            seen.add(deal.minQuantity)
+          })
+          if (problems.length) {
+            console.log(`  [pack-deals] REFUSED ${problems.length} problem(s) for ${prod.name}`)
+            res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({
+              error: 'Invalid pack deal',
+              message: problems[0].problem,
+              problems,
+            }))
+            return
+          }
+
+          const clean = incoming
+            .map((d) => ({
+              id: d.id ?? `pd-${variantId.slice(0, 8)}-${d.minQuantity}`,
+              variantId,
+              minQuantity: d.minQuantity,
+              packPrice: d.packPrice,
+              saleDiscount: d.saleDiscount ?? null,
+              discountPercent: d.discountPercent ?? null,
+              maxPerOrder: d.maxPerOrder ?? null,
+            }))
+            .sort((a, b) => a.minQuantity - b.minQuantity)
+
+          const all = readPackDealsFile()
+          all[productId] = all[productId] ?? {}
+          all[productId][variantId] = clean
+          all.__comment = 'Authored pack deals. Managed by PUT /api/admin/products/:id/variants/:vid/pack-deals. The only durable state in this server.'
+          writePackDealsFile(all)
+          applyPackDeals()
+          console.log(`  [pack-deals] ${prod.name} / ${variant.name}: ${clean.length} deal(s) saved and persisted`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, packDeals: clean, persistedTo: 'pack-deals.json' }))
+          return
+        }
+
+        if (req.method === 'DELETE') {
+          const all = readPackDealsFile()
+          if (all[productId]) delete all[productId][variantId]
+          writePackDealsFile(all)
+          variant.quantityDiscounts = []
+          applyPackDeals()
+          console.log(`  [pack-deals] ${prod.name} / ${variant.name}: cleared`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, packDeals: [] }))
+          return
+        }
       }
 
       if (pathname === '/api/admin/users' && req.method === 'GET') {

@@ -1,0 +1,25 @@
+{
+ "__comment": "Authored pack deals - the only durable state in this server. Managed by PUT /api/admin/products/:id/variants/:vid/pack-deals, which validates every deal and refuses a packPrice that is not below pricePerUnit x minQuantity. Every deal is re-validated on load too, so hand-editing this file cannot bypass the guard.",
+ "21b35213-92c5-51ab-9b59-1b565ef8b550": {
+  "d8b565c4-7823-5fec-9bc7-34295884de73": [
+   {
+    "id": "pd-d8b565c4-5",
+    "variantId": "d8b565c4-7823-5fec-9bc7-34295884de73",
+    "minQuantity": 5,
+    "packPrice": 112.5,
+    "saleDiscount": null,
+    "discountPercent": null,
+    "maxPerOrder": null
+   },
+   {
+    "id": "pd-d8b565c4-10",
+    "variantId": "d8b565c4-7823-5fec-9bc7-34295884de73",
+    "minQuantity": 10,
+    "packPrice": 200,
+    "saleDiscount": null,
+    "discountPercent": null,
+    "maxPerOrder": null
+   }
+  ]
+ }
+}
