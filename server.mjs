@@ -125,6 +125,12 @@ function buildSeedCart() {
 /** Orders placed locally through the checkout flow. In memory only. */
 const orders = []
 
+/** The recorded (sanitised) account, used to attribute locally placed orders. */
+let accountUser = null
+try {
+  accountUser = JSON.parse(readFileSync(join(SAMPLES, 'api_auth_me.json'), 'utf8')).user ?? null
+} catch { /* leave null */ }
+
 /** Back-in-stock subscriptions, counted for the dashboard tile. */
 let stockSubscriptions = 0
 try {
@@ -316,11 +322,19 @@ const server = createServer(async (req, res) => {
         const v = line.variant ?? {}
         const qty = line.quantity ?? 1
         const unit = line.packPrice ?? v.pricePerUnit ?? prod.pricePerUnit ?? gi.pricePerUnit ?? 0
+        // Field names are the ones OrderDetail reads:
+        //   n.product || n.groupBuyItem || n.saleItem     -> the item record
+        //   n.totalPrice || n.pricePerUnit * n.quantity   -> line total
+        //   n.pricePerUnit || m.pricePerUnit              -> unit price  (must exist)
+        //   n.itemName || m.name                          -> label
         return {
           id: line.id, quantity: qty, productId: line.productId ?? null,
           groupBuyItemId: line.groupBuyItemId ?? null, variantId: line.variantId ?? null,
+          itemName: gi.name ?? (v.name ? `${prod.name ?? ''} - ${v.name}` : (prod.name ?? 'Item')),
           name: gi.name ?? (v.name ? `${prod.name ?? ''} - ${v.name}` : (prod.name ?? 'Item')),
-          unitPrice: unit, totalPrice: unit * qty,
+          pricePerUnit: unit, unitPrice: unit, totalPrice: unit * qty,
+          product: line.product ?? null, groupBuyItem: gi ?? null, variant: v ?? null,
+          coas: [], coaRequested: false,
         }
       }),
       shippingAddress: body.shippingAddress ?? body.address ?? null,
@@ -332,8 +346,22 @@ const server = createServer(async (req, res) => {
         return sum + unit * (line.quantity ?? 1)
       }, 0),
       createdAt: new Date().toISOString(),
+      // OrderDetail reads these flat money fields individually, so each must be a
+      // number - an absent one crashes it on .toFixed.
+      subtotal: 0, discountAmount: 0, shippingCost: 0, insuranceCost: 0,
+      coaCost: 0, adminFee: 0, paymentMethodFee: 0,
+      coas: [], tickets: [], updates: [],
+      // The admin list shows Customer from these; without them the row reads "Unknown".
+      // Taken from the recorded (sanitised) account, since this is that account's order.
+      userId: accountUser?.id ?? null,
+      user: accountUser ?? null,
+      customer: accountUser ?? null,
+      customerName: accountUser ? `${accountUser.firstName ?? ''} ${accountUser.lastName ?? ''}`.trim() : null,
+      email: accountUser?.email ?? null,
       __local: 'created by the local replay; not a real order',
     }
+    order.subtotal = order.total
+    order.totalAmount = order.total
     orders.push(order)
     cart = []                    // a placed order empties the cart
     console.log(`  [order] created ${order.orderNumber} with ${order.items.length} item(s)`)
