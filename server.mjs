@@ -19,6 +19,7 @@
 
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +31,34 @@ const PORT = Number(process.argv[2] ?? 4400)
 const VERBOSE = process.env.UNIFIED_LOG === '1'
 /** Every endpoint asked for but never recorded, exposed at /__gaps for auditing. */
 const notRecorded = new Set()
+
+/**
+ * The recorded catalogue, used to hydrate wishlist items the same way the real API
+ * does. A wishlist item is not a bare id: it carries the whole product object, so a
+ * row added without one renders blank.
+ */
+let catalogProducts = []
+try {
+  catalogProducts = JSON.parse(readFileSync(join(SAMPLES, 'api_products_catalog.json'), 'utf8')).products ?? []
+} catch { /* leave empty */ }
+
+/** Read a request body as text (used by the few endpoints that accept one). */
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
+}
+
+/**
+ * The wishlist, seeded from the recorded sample so it starts as the real account had
+ * it. Mutations live in memory only.
+ */
+let wishlist = []
+try {
+  wishlist = JSON.parse(readFileSync(join(SAMPLES, 'api_wishlist.json'), 'utf8')).items ?? []
+} catch { /* leave empty */ }
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -94,6 +123,55 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
   const pathname = decodeURIComponent(url.pathname)
   if (VERBOSE) console.log(`  <- ${req.method} ${pathname}`)
+
+  // --- wishlist: in-memory, seeded from the recording --------------------
+  // The read endpoint is a static sample, so a toggle that removes an item appears to
+  // work but reverts on reload - and it 404s the POST/DELETE the client actually
+  // sends. This keeps the same item shape while letting add/remove persist for the
+  // life of the process. Deliberately NOT persisted to disk: the recording stays the
+  // source of truth, and a restart returns to it.
+  if (pathname === '/api/wishlist') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ items: wishlist }))
+      return
+    }
+    if (req.method === 'POST') {
+      let body = {}
+      try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+      if (body.productId && !wishlist.some((i) => i.productId === body.productId)) {
+        // Hydrate from the catalogue so the item has the same shape the real API
+        // returns. Without this the row has product: null and renders empty.
+        const product = catalogProducts.find((p) => p.id === body.productId) ?? null
+        const variants = product?.variants ?? []
+        const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
+        wishlist.push({
+          id: `local-${Date.now()}-${wishlist.length}`,
+          productId: body.productId,
+          variantId: body.variantId ?? null,
+          createdAt: new Date().toISOString(),
+          product,
+          variant,
+          hasVariants: variants.length > 0,
+          availableStock: variant?.availableStock ?? product?.stockQty ?? 0,
+          activeSale: null,
+        })
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true, items: wishlist.length }))
+      return
+    }
+  }
+
+  if (pathname.startsWith('/api/wishlist/') && req.method === 'DELETE') {
+    const id = pathname.split('/').pop()
+    const before = wishlist.length
+    for (let i = wishlist.length - 1; i >= 0; i--) if (wishlist[i].id === id) wishlist.splice(i, 1)
+    console.log(`  [wishlist] DELETE ${id.slice(0, 8)} -> ${before} item(s) to ${wishlist.length}`)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
 
   // --- audit surface -----------------------------------------------------
   // Lets a sweep end with "zero unrecorded endpoints" as a checked fact rather than

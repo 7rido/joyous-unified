@@ -1,0 +1,1 @@
+import{ah as n}from"./main-Ka3zPAR3.js";const r={product:o=>`/products/${encodeURIComponent(o)}`,groupbuy:o=>`/groupbuys/${encodeURIComponent(o)}`,sale:o=>`/sales/${encodeURIComponent(o)}`};function t(o,e){!r[o]||!e||window.open(n({kind:o,id:e,path:r[o](e)}),"_blank","noopener")}const s=(o,e)=>r[o]&&e?n({kind:o,id:e,path:r[o](e)}):"#";export{s as c,t as o};
