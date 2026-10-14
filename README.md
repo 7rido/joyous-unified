@@ -51,14 +51,30 @@ boundary. Verified after driving every route and watching the network:
 **Every endpoint the app requests is recorded.** 565 requests were logged across the
 route sweep and the server reported zero unrecorded `/api/*` calls.
 
-### Admin routes are not covered
+### Admin runs their real chunks too
 
-All **33 `/admin/*` routes return "Admins only"** on the live site, including
-`/admin`, `/admin/products`, `/admin/users`, `/admin/reports`, `/admin/settings`,
-`/admin/storefront`, `/admin/support`, `/admin/inventory`, `/admin/orders` and the
-rest of the tree. The session is VIP but not admin, so the admin surface cannot be
-captured. Its route names are known from the client bundle but the pages were never
-reachable and no admin API response has ever been observed.
+The live site answers every `/admin/*` route with "Admins only" for this session — VIP
+but not an admin. That gate is on the **server**, not in the bundle: the admin chunks
+ship in the public JavaScript just like the member chunks.
+
+So the admin panel runs the same way the member app does, on their compiled code:
+
+```sh
+ADMIN_VIEW=1 node server.mjs 4400      # then open /admin
+```
+
+**33/33 of their admin routes render the real panel.**
+
+The gate is `!!user.isAdmin` plus a re-verification against `GET /auth/me` on mount,
+so a localStorage flag is not sufficient — under `ADMIN_VIEW=1` the recorded `/auth/me`
+response itself carries `isAdmin: true`, marked `__localAdminSeed`. It is off by
+default and grants nothing real.
+
+No `/api/admin/*` response was ever observed. Those endpoints therefore answer derived
+**empty shapes**, not `{}`. The distinction matters: `{}` killed three pages on *shape*
+rather than data — `J.filter is not a function` because the page did
+`l(y.data || [])` and filtered a non-array, and `reading 'configured'` because the
+health payload's nested groups are read without optional chaining.
 
 ### Auth is synthesised, not recorded
 
