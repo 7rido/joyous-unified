@@ -70,11 +70,24 @@ so a localStorage flag is not sufficient — under `ADMIN_VIEW=1` the recorded `
 response itself carries `isAdmin: true`, marked `__localAdminSeed`. It is off by
 default and grants nothing real.
 
-No `/api/admin/*` response was ever observed. Those endpoints therefore answer derived
-**empty shapes**, not `{}`. The distinction matters: `{}` killed three pages on *shape*
-rather than data — `J.filter is not a function` because the page did
-`l(y.data || [])` and filtered a non-array, and `reading 'configured'` because the
-health payload's nested groups are read without optional chaining.
+**The admin API is AUTHORED, not recorded** — and that distinction has grown teeth as
+more of it was built. No `/api/admin/*` response was ever observed, so every admin
+endpoint here is somebody's inference of a shape from the client that reads it.
+
+Where nothing is implemented the server answers a derived **empty shape**, not `{}`. The
+distinction matters: `{}` killed three pages on *shape* rather than data —
+`J.filter is not a function` because the page did `l(y.data || [])` and filtered a
+non-array, and `reading 'configured'` because the health payload's nested groups are read
+without optional chaining.
+
+Since then the heavily-trafficked ones were implemented properly and serve derived real
+data: products, orders, users, support tickets, campaigns, the Today dashboard, reports,
+fee settlement, discount codes, newsletter and the storefront settings. **Ten endpoints
+are still hollow** — nine return an empty shape and `/api/admin/system/health` returns a
+hardcoded stub whose `ok: true` asserts nothing was checked.
+
+-> **`COVERAGE.md`** has the full picture: what is recorded versus authored, every
+remaining gap, the bugs worth not repeating, and the harness's own limits.
 
 ### Auth is synthesised, not recorded
 
@@ -86,6 +99,29 @@ establish a session. Without it, login returned `{}` with HTTP 200, the client r
 
 **No credential is checked** — any email and password are accepted. This is a UI
 gate, not a security boundary. The real API still requires a genuine session.
+
+## The community forum
+
+`community.joyous.is` is a **separate Vite React SPA** — one route prefix
+(`/api/community/*`) on the same backend, not a separate service. Its client is captured
+verbatim into `community/` and served on its own host:
+
+```sh
+ADMIN_VIEW=1 node server.mjs 4400
+# http://community.localhost:4400     <- use http:// explicitly
+```
+
+Use `http://`. Chromium force-upgrades `https://localhost` and this server speaks plain
+HTTP, so a bare `community.localhost:4400` can resolve to HTTPS and fail with
+`ERR_SSL_PROTOCOL_ERROR`.
+
+Served on its **own host rather than a path prefix**, because its bundle uses
+root-relative `/assets/` URLs — 21 of its asset filenames collide with the member app's,
+and all 21 are byte-identical, so host routing needs zero changes to their bytes.
+
+Its API **is** substituted locally, including a demo dataset. See `community/DEMO.md` for
+how to sign in and an explicit account of what is real (the client, the shapes) versus
+invented (the content, the session).
 
 ## What is in dist/
 
