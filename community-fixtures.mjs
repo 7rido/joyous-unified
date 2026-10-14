@@ -1,7 +1,7 @@
 /**
  * Shared fixture identity, in its own module to keep the import graph acyclic.
  *
- * `community-api.mjs` defines the routes and `community-seed.mjs` defines the content,
+ * `community-api.mjs` defines the routes and `community-demo.mjs` defines the content,
  * and the content needs the member — so seed imported it from api while api imported the
  * content from seed. That cycle left FIXTURE_MEMBER in its temporal dead zone and the
  * server refused to boot ("Cannot access 'FIXTURE_MEMBER' before initialization").
@@ -33,3 +33,14 @@ export const FIXTURE_MEMBER = {
 
 /** Addresses that may sign in. Passwords are NOT checked — see community-api.mjs. */
 export const ALLOWED_EMAILS = new Set([FIXTURE_MEMBER.email, 'ada@example.com'])
+
+
+/**
+ * An ISO timestamp N days (and optionally hours) in the past.
+ *
+ * Shared, and deliberately not inlined per-module: every timestamp the client parses
+ * (`lastActivityAt`, `startsAt`, `createdAt`) must be a real ISO string, because date-fns
+ * throws RangeError on a truthy-but-unparseable value rather than rendering blank.
+ */
+export const chrono = (days = 0, hours = 0) =>
+  new Date(Date.now() - days * 86400000 - hours * 3600000).toISOString()

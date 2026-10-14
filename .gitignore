@@ -26,3 +26,6 @@ idempotency-keys.json
 storefront-config.json
 promo-codes.json
 newsletter.json
+
+# Images uploaded through the community demo. Authored at runtime, recreated on demand.
+community/uploads/

@@ -33,11 +33,14 @@
  * form is real, the check behind it is not, and `__fixture` marks it.
  */
 
-import { FIXTURE_MEMBER, ALLOWED_EMAILS } from './community-fixtures.mjs'
+import { FIXTURE_MEMBER } from './community-fixtures.mjs'
 import {
-  ROOMS, POSTS, MEMBERS, EVENTS, NOTIFICATIONS, COMMENTS,
-  overview, unreadState, unreadCount,
-} from './community-seed.mjs'
+  ROOMS, POSTS, MEMBERS, EVENTS, NOTIFICATIONS, COMMENTS, LOGIN_INDEX,
+  overview, unreadState, unreadCount, participantsFor, postById, commentsFor,
+} from './community-demo.mjs'
+
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const SESSION_COOKIE = 'joyous_community_sid'
 const SESSIONS = new Map()
@@ -45,7 +48,46 @@ let seq = 0
 
 /** Re-exported so callers have one place to look; defined in community-fixtures.mjs. */
 export { FIXTURE_MEMBER }
-const ALLOWED = ALLOWED_EMAILS
+
+/**
+ * Accept a multipart upload and write it under community/uploads/.
+ *
+ * Deliberately a real file rather than a URL that 404s: the client puts the returned URL
+ * into an <img src>, so a placeholder string produces a broken image and looks like a
+ * rendering bug. Parsed by hand because this project has no dependencies, which is also
+ * why the parsing is this blunt — one file part, CRLF-delimited, no nested multipart.
+ */
+const UPLOAD_DIR = new URL('./community/uploads/', import.meta.url).pathname
+
+async function receiveUpload(req) {
+  const raw = await new Promise((resolve) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+  })
+  const type = String(req.headers['content-type'] ?? '')
+  const boundary = /boundary=([^;]+)/.exec(type)?.[1]
+  if (!boundary) return null
+
+  const parts = raw.split(Buffer.from(`--${boundary}`))
+  for (const part of parts) {
+    const headerEnd = part.indexOf('\r\n\r\n')
+    if (headerEnd < 0) continue
+    const head = part.slice(0, headerEnd).toString('utf8')
+    if (!/name="file"/.test(head)) continue
+    const filename = /filename="([^"]*)"/.exec(head)?.[1] ?? 'upload'
+    const mime = /Content-Type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim() ?? 'application/octet-stream'
+    // Trailing CRLF belongs to the delimiter, not the file.
+    let body = part.slice(headerEnd + 4)
+    if (body.slice(-2).toString() === '\r\n') body = body.slice(0, -2)
+    const ext = (/\.([a-z0-9]+)$/i.exec(filename)?.[1] ?? 'bin').toLowerCase()
+    const safe = `up-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    mkdirSync(UPLOAD_DIR, { recursive: true })
+    writeFileSync(join(UPLOAD_DIR, safe), body)
+    return `/uploads/${safe}`
+  }
+  return null
+}
 
 const readBody = (req) =>
   new Promise((resolve) => {
@@ -129,14 +171,16 @@ export async function handleCommunityApi(req, res, pathname) {
       json(res, 400, { error: 'Enter your email and password.' })
       return true
     }
-    if (!ALLOWED.has(email)) {
-      // The real API does not reveal whether an address exists, and neither does this.
+    // Seeded addresses only. The real API does not reveal whether an address exists, and
+    // neither does this: an unknown address and a wrong password answer identically.
+    const member = LOGIN_INDEX.get(email) ?? (email === 'ada@example.com' ? FIXTURE_MEMBER : null)
+    if (!member) {
       json(res, 401, { error: "That email and password don't match." })
       return true
     }
-    startSession(res, { ...FIXTURE_MEMBER, email })
-    console.log(`  [community] sign-in (fixture): ${email}`)
-    json(res, 200, { member: { ...FIXTURE_MEMBER, email } })
+    startSession(res, member)
+    console.log(`  [community] sign-in (fixture): ${email} role=${member.role}`)
+    json(res, 200, { member })
     return true
   }
 
@@ -154,9 +198,24 @@ export async function handleCommunityApi(req, res, pathname) {
     if (!email) { json(res, 400, { error: 'Enter your email.' }); return true }
     // The real flow emails a verification link. There is no mail here, so the account is
     // created verified and the email is named in the log rather than silently dropped.
-    if (!ALLOWED.has(email)) ALLOWED.add(email)
+    // A signup is a plain MEMBER — never staff. The real flow emails a verification
+    // link; there is no mail here, so the account is created verified and the address is
+    // named in the log rather than silently discarded.
+    const created = {
+      ...FIXTURE_MEMBER,
+      id: `comm-new-${Date.now().toString(36)}`,
+      email,
+      displayName: String(body.displayName ?? email.split('@')[0]).slice(0, 40),
+      username: email.split('@')[0].slice(0, 30),
+      avatarUrl: null,
+      role: 'MEMBER',
+      // The client shows a "pick a display name" step when this is set.
+      needsDisplayName: !body.displayName,
+      __fixture: true,
+    }
+    LOGIN_INDEX.set(email, created)
     console.log(`  [community] signup (fixture, auto-verified): ${email}`)
-    json(res, 201, { ok: true, member: { ...FIXTURE_MEMBER, email }, verificationSent: false, __fixture: true })
+    json(res, 201, { ok: true, member: created, verificationSent: false, __fixture: true })
     return true
   }
 
@@ -171,6 +230,32 @@ export async function handleCommunityApi(req, res, pathname) {
     startSession(res, FIXTURE_MEMBER)
     console.log('  [community] SSO handoff accepted (fixture)')
     json(res, 200, { member: FIXTURE_MEMBER })
+    return true
+  }
+
+  // --- the signed-in member, editable -----------------------------------
+  // The client PATCHes its own profile and reads `{member}` back.
+  if (route === '/auth/me' && req.method === 'PATCH') {
+    const session = sessionOf(req)
+    if (!session) { json(res, 401, { error: 'Please sign in.' }); return true }
+    const body = await readBody(req)
+    const next = { ...session.member }
+    if (body.displayName !== undefined) next.displayName = String(body.displayName).slice(0, 40)
+    if (body.avatarUrl !== undefined) next.avatarUrl = body.avatarUrl || null
+    if (body.bio !== undefined) next.bio = String(body.bio).slice(0, 300)
+    delete next.needsDisplayName
+    session.member = next
+    json(res, 200, { member: next })
+    return true
+  }
+
+  // Image upload. There is no object store here, so the bytes are written under
+  // community/uploads/ and served back from the same host — a real file you can open,
+  // rather than a URL that 404s.
+  if (route === '/uploads' && req.method === 'POST') {
+    const url = await receiveUpload(req)
+    console.log(`  [community] upload -> ${url}`)
+    json(res, 200, { url })
     return true
   }
 
@@ -229,20 +314,15 @@ export async function handleCommunityApi(req, res, pathname) {
   if (route === '/posts/participants' && req.method === 'GET') {
     const ids = String(new URL(req.url ?? '/', 'http://x').searchParams.get('ids') ?? '')
       .split(',').map((x) => x.trim()).filter(Boolean)
-    const participants = {}
-    for (const id of ids) {
-      const post = POSTS.find((x) => x.id === id)
-      if (post) participants[id] = [post.author].filter(Boolean)
-    }
-    json(res, 200, { participants })
+    json(res, 200, { participants: participantsFor(ids) })
     return true
   }
 
   const postMatch = new RegExp('^/posts/([^/]+)$').exec(route)
   if (postMatch && req.method === 'GET') {
-    const post = POSTS.find((x) => x.id === decodeURIComponent(postMatch[1]))
+    const post = postById(decodeURIComponent(postMatch[1]))
     if (!post) { json(res, 404, { error: 'That post no longer exists.' }); return true }
-    json(res, 200, { post, comments: COMMENTS[post.id] ?? [], __fixture: true })
+    json(res, 200, { post, comments: commentsFor(post.id), __fixture: true })
     return true
   }
 

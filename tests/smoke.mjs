@@ -1479,7 +1479,7 @@ const emptyLogin = await post('/api/community/auth/login', { email: '', password
 check('an empty sign-in is refused', emptyLogin.status === 400, `HTTP ${emptyLogin.status}`)
 
 // The session is a cookie, because the client sends withCredentials: true.
-const login = await post('/api/community/auth/login', { email: 'ada.lovelace@example.com', password: 'anything' })
+const login = await post('/api/community/auth/login', { email: 'ada@example.com', password: 'anything' })
 check('the fixture sign-in succeeds', login.status === 200 && !!login.body?.member,
   `role=${login.body?.member?.role}`)
 // `emailVerified` gates canPost in the client; without it the forum renders read-only and
@@ -1487,6 +1487,15 @@ check('the fixture sign-in succeeds', login.status === 200 && !!login.body?.memb
 check('the member carries emailVerified and a role the client checks',
   login.body?.member?.emailVerified === true && ['ADMIN', 'MODERATOR'].includes(login.body?.member?.role),
   `emailVerified=${login.body?.member?.emailVerified} role=${login.body?.member?.role}`)
+// The three demo roles exist so the role gate is testable: /mod is rendered only for
+// MODERATOR and ADMIN, so a MEMBER must not be one.
+const asMember = await post('/api/community/auth/login', { email: 'chen@example.com', password: 'anything' })
+check('a seeded MEMBER is not staff', asMember.body?.member?.role === 'MEMBER',
+  `role=${asMember.body?.member?.role}`)
+const asMod = await post('/api/community/auth/login', { email: 'bruno@example.com', password: 'anything' })
+check('a seeded MODERATOR is staff', asMod.body?.member?.role === 'MODERATOR',
+  `role=${asMod.body?.member?.role}`)
+
 check('the member shape matches the fields the client reads',
   login.body.member.id != null && !!login.body.member.displayName,
   `keys: ${Object.keys(login.body.member).slice(0, 6).join(', ')}`)
