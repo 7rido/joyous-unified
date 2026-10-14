@@ -52,6 +52,62 @@ function readBody(req) {
 }
 
 /**
+ * The cart, seeded with one line of each kind so the filled state is reachable.
+ *
+ * The recording has an empty cart (the live account had nothing in it), which means
+ * every cart feature - quantity steppers, remove, totals, checkout gating - is
+ * unreachable from an empty start. Three payload shapes were read off the client:
+ *
+ *   POST /cart { productId, variantId, quantity }
+ *   POST /cart { groupBuyItemId, quantity }
+ *   POST /cart { saleItemId, quantity }
+ *
+ * Items are hydrated from the recorded catalogue and group-buy payloads so the client
+ * finds the nested product/variant/campaign objects its selectors expect. In memory
+ * only; a restart returns to the recording.
+ */
+function buildSeedCart() {
+  const items = []
+  const first = catalogProducts[0]
+  if (first) {
+    const v = first.variants?.[0] ?? null
+    items.push({
+      id: 'seed-product-1', kind: 'product', productId: first.id,
+      variantId: v?.id ?? null, quantity: 2,
+      product: first, variant: v, groupBuyItem: null, saleItem: null, campaign: null,
+    })
+  }
+  const second = catalogProducts[3]
+  if (second) {
+    const v = second.variants?.[0] ?? null
+    items.push({
+      id: 'seed-product-2', kind: 'product', productId: second.id,
+      variantId: v?.id ?? null, quantity: 1,
+      product: second, variant: v, groupBuyItem: null, saleItem: null, campaign: null,
+    })
+  }
+  const camp = catalogCampaigns[0]
+  const gi = camp?.items?.[0]
+  if (gi) {
+    items.push({
+      id: 'seed-groupbuy-1', kind: 'groupbuy', groupBuyItemId: gi.id, quantity: 1,
+      product: gi.product ?? null, variant: gi.variant ?? null,
+      groupBuyItem: gi, saleItem: null, campaign: camp,
+    })
+  }
+  return items
+}
+
+/** The group-buy campaigns, for hydrating group-buy cart lines. */
+let catalogCampaigns = []
+try {
+  catalogCampaigns = JSON.parse(readFileSync(join(SAMPLES, 'api_groupbuys.json'), 'utf8')).campaigns ?? []
+} catch { /* leave empty */ }
+
+/** The cart, in memory, seeded so a filled cart is reachable. */
+let cart = buildSeedCart()
+
+/**
  * The wishlist, seeded from the recorded sample so it starts as the real account had
  * it. Mutations live in memory only.
  */
@@ -123,6 +179,160 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
   const pathname = decodeURIComponent(url.pathname)
   if (VERBOSE) console.log(`  <- ${req.method} ${pathname}`)
+
+  // --- checkout validation ----------------------------------------------
+  // POST /checkout/validate-cart replies with the price breakdown the order summary
+  // renders. The field names below are the destructured props of that component:
+  //
+  //   function OrderSummary({items, subtotal, discount, shippingCost, insuranceCost,
+  //                          coaCost, adminFee, total, freeShippingThreshold,
+  //                          freeShippingEnabled, isCollapsed, onToggle})
+  //
+  // Falling through to the {} fallback left `items` undefined, so items.map threw and
+  // the whole checkout page hit the error boundary.
+  //
+  // The AMOUNTS are computed here from the in-memory cart, not recorded: the live
+  // account's cart is empty, so this endpoint cannot be observed, and its server-side
+  // pricing (tier discounts, fees, shipping rules) is not something this mock can
+  // reproduce faithfully. Treat the arithmetic as invented and the shape as derived.
+  if (pathname === '/api/checkout/validate-cart' && req.method === 'POST') {
+    const unit = (line) => {
+      const v = line.variant ?? {}
+      const prod = line.product ?? {}
+      const base = v.pricePerUnit ?? prod.pricePerUnit ?? 0
+      const disc = v.saleDiscount ?? prod.saleDiscount ?? 0
+      return Math.max(base - disc, 0)
+    }
+    const items = cart.map((line) => {
+      const prod = line.product ?? {}
+      const v = line.variant ?? {}
+      const qty = line.quantity ?? 1
+      // The summary reads r.name, r.quantity and r.totalPrice - note totalPrice, a
+      // LINE total. Naming it lineTotal left totalPrice undefined and .toFixed threw.
+      return {
+        ...line,
+        name: v.name ? `${prod.name ?? ''} - ${v.name}`.trim() : (prod.name ?? 'Item'),
+        quantity: qty,
+        unitPrice: unit(line),
+        totalPrice: unit(line) * qty,
+      }
+    })
+    const subtotal = items.reduce((sum, i) => sum + i.totalPrice, 0)
+    const body = {
+      items,
+      subtotal,
+      // discount is an OBJECT ({code, amount}) or null. Passing 0 still satisfied the
+      // truthiness guard and then read .amount off a number.
+      discount: null,
+      shippingCost: 0,
+      insuranceCost: 0,
+      coaCost: 0,
+      adminFee: 0,
+      total: subtotal,
+      freeShippingThreshold: 200,
+      freeShippingEnabled: true,
+    }
+    console.log(`  [checkout] validate-cart -> ${items.length} item(s), subtotal ${subtotal}`)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(body))
+    return
+  }
+
+  // --- cart: in-memory, seeded so the filled state is reachable ----------
+  if (pathname === '/api/cart') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ items: cart, cartType: cart.length ? 'MIXED' : null }))
+      return
+    }
+    if (req.method === 'POST') {
+      let body = {}
+      try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+      const qty = Number(body.quantity) || 1
+      // Adding a product already in the cart INCREMENTS its line rather than
+      // appending a second one. Pushing unconditionally left the same item as
+      // repeated lines with the true total split across them.
+      const existing = cart.find((i) =>
+        (body.groupBuyItemId && i.groupBuyItemId === body.groupBuyItemId) ||
+        (body.saleItemId && i.saleItemId === body.saleItemId) ||
+        (body.productId && i.productId === body.productId &&
+          (i.variantId ?? null) === (body.variantId ?? i.variantId ?? null)))
+      if (existing) {
+        existing.quantity += qty
+        console.log(`  [cart] POST merge -> ${existing.id.slice(0, 16)} qty ${existing.quantity}`)
+      } else if (body.groupBuyItemId) {
+        const camp = catalogCampaigns.find((c) => (c.items ?? []).some((i) => i.id === body.groupBuyItemId))
+        const gi = camp?.items?.find((i) => i.id === body.groupBuyItemId) ?? null
+        cart.push({ id: `local-gb-${Date.now()}`, kind: 'groupbuy', groupBuyItemId: body.groupBuyItemId,
+          quantity: qty, product: gi?.product ?? null, variant: gi?.variant ?? null,
+          groupBuyItem: gi, saleItem: null, campaign: camp ?? null })
+      } else if (body.saleItemId) {
+        cart.push({ id: `local-sale-${Date.now()}`, kind: 'sale', saleItemId: body.saleItemId,
+          quantity: qty, product: null, variant: null, groupBuyItem: null, saleItem: { id: body.saleItemId }, campaign: null })
+      } else if (body.productId) {
+        const product = catalogProducts.find((x) => x.id === body.productId) ?? null
+        const variants = product?.variants ?? []
+        const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
+        cart.push({ id: `local-p-${Date.now()}`, kind: 'product', productId: body.productId,
+          variantId: body.variantId ?? variant?.id ?? null, quantity: qty,
+          product, variant, groupBuyItem: null, saleItem: null, campaign: null })
+      }
+      console.log(`  [cart] POST -> ${cart.length} line(s)`)
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true, items: cart }))
+      return
+    }
+    if (req.method === 'PUT' || req.method === 'PATCH') {
+      let body = {}
+      try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+      const line = cart.find((i) => i.id === body.itemId || i.id === body.id)
+      if (line) line.quantity = Number(body.quantity) || line.quantity
+      console.log(`  [cart] ${req.method} -> quantity=${line?.quantity ?? '?'}`)
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true, items: cart }))
+      return
+    }
+    if (req.method === 'DELETE') {
+      // The client calls DELETE /cart to clear it.
+      const before = cart.length
+      cart = []
+      console.log(`  [cart] DELETE all -> ${before} to 0`)
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true }))
+      return
+    }
+  }
+
+  // Per-line updates carry the id in the PATH and only {quantity} in the body:
+  //   PUT    /api/cart/<itemId>  {"quantity":3}
+  //   DELETE /api/cart/<itemId>
+  // Looking for the id in the body silently did nothing - the request arrived, the
+  // handler matched no line, and the page kept its old quantity with no error.
+  if (pathname.startsWith('/api/cart/')) {
+    const id = pathname.split('/').pop()
+    if (req.method === 'PUT' || req.method === 'PATCH') {
+      let body = {}
+      try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+      const line = cart.find((i) => i.id === id)
+      if (line) {
+        line.quantity = Number(body.quantity) || line.quantity
+        console.log(`  [cart] PUT ${id.slice(0, 16)} -> quantity ${line.quantity}`)
+      } else {
+        console.log(`  [cart] PUT ${id.slice(0, 16)} -> NO SUCH LINE`)
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true, items: cart }))
+      return
+    }
+    if (req.method === 'DELETE') {
+      const before = cart.length
+      cart = cart.filter((i) => i.id !== id)
+      console.log(`  [cart] DELETE ${id.slice(0, 16)} -> ${before} to ${cart.length}`)
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true }))
+      return
+    }
+  }
 
   // --- wishlist: in-memory, seeded from the recording --------------------
   // The read endpoint is a static sample, so a toggle that removes an item appears to
