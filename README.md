@@ -32,6 +32,45 @@ The landing clone's root links still resolve: `/` is served the member client.
 
 They load different bundles. Merging them would load both clients at once.
 
+## Coverage
+
+**34 / 34 public routes** render with zero 404s, zero missing images and no error
+boundary. Verified after driving every route and watching the network:
+
+```
+/ /products /products/:handle
+/groupbuys /groupbuys/:id (x4 campaigns) /groupbuys/orders
+/sales /cart /checkout /checkout/payment
+/coas /dashboard /orders /payments /wishlist /support
+/disclaimer /privacy /terms /shipping
+/elite /vip /member-details /email-preferences
+/login /register /forgot-password /reset-password /unsubscribe /verify-email
+/app/  (the landing clone)
+```
+
+**Every endpoint the app requests is recorded.** 565 requests were logged across the
+route sweep and the server reported zero unrecorded `/api/*` calls.
+
+### Admin routes are not covered
+
+All **33 `/admin/*` routes return "Admins only"** on the live site, including
+`/admin`, `/admin/products`, `/admin/users`, `/admin/reports`, `/admin/settings`,
+`/admin/storefront`, `/admin/support`, `/admin/inventory`, `/admin/orders` and the
+rest of the tree. The session is VIP but not admin, so the admin surface cannot be
+captured. Its route names are known from the client bundle but the pages were never
+reachable and no admin API response has ever been observed.
+
+### Auth is synthesised, not recorded
+
+`POST /api/auth/login` and `/api/auth/register` return a session built from the
+sanitised `/api/auth/me` record. These are the two endpoints that cannot be
+recorded: a recorded login is a snapshot and the client needs a live response to
+establish a session. Without it, login returned `{}` with HTTP 200, the client read
+`data.user`, found undefined, and bounced back to `/login`.
+
+**No credential is checked** — any email and password are accepted. This is a UI
+gate, not a security boundary. The real API still requires a genuine session.
+
 ## What is in dist/
 
 | | |

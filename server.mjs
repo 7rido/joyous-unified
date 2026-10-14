@@ -95,6 +95,34 @@ const server = createServer(async (req, res) => {
 
   // --- API ---------------------------------------------------------------
   if (pathname.startsWith('/api/')) {
+    // --- Auth is synthesised, not recorded -------------------------------
+    // These are the only endpoints that CANNOT be recorded: a recorded login
+    // response is a snapshot, and the client needs a live one to establish a
+    // session. Without this, POST /auth/login returns {} with a 200, the client
+    // reads `data.user`, finds undefined, and bounces straight back to /login.
+    //
+    // The client only requires `user` in the response shape the /auth/me sample
+    // already uses, so the same object is returned for login, register and me.
+    // NO CREDENTIAL IS CHECKED - any email and password are accepted, because
+    // there is no backend behind this.
+    if (pathname === '/api/auth/login' || pathname === '/api/auth/register') {
+      let user = null
+      try {
+        user = JSON.parse(await readFile(join(SAMPLES, 'api_auth_me.json'), 'utf8')).user
+      } catch { /* fall through */ }
+      if (user) {
+        console.log(`  [auth] ${pathname} -> synthetic session for ${user.email}`)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ user, token: 'placeholder-token' }))
+        return
+      }
+    }
+    if (pathname === '/api/auth/logout') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":true}')
+      return
+    }
+
     const file = sampleFileFor(pathname)
     if (file && existsSync(file)) {
       const body = await readFile(file)

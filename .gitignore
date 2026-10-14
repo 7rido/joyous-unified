@@ -1,2 +1,6 @@
 node_modules/
 .DS_Store
+
+# The seeded browser profile used to verify the member surface. Browser cache and
+# credentials, not project source.
+.local-chrome-profile/
