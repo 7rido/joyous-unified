@@ -1,0 +1,13 @@
+{
+ "enabled": true,
+ "message": "Welcome to Joyous, hope you enjoy the new layout and Joyo chat! We have migrated product visibilty to a tiered system with manual approval. ",
+ "style": "info",
+ "speed": "slow",
+ "fontSize": "large",
+ "glow": false,
+ "shimmer": true,
+ "pulse": "none",
+ "emoji": "\ud83d\udce2",
+ "bold": true,
+ "uppercase": true
+}

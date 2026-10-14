@@ -1,0 +1,73 @@
+{
+ "methods": [
+  {
+   "id": "clover",
+   "name": "Credit/Debit/ACH",
+   "type": "external",
+   "fee": 5,
+   "url": "https://link.clover.com/urlshortener/tVb67Z",
+   "description": "5% convenience fee applies"
+  },
+  {
+   "id": "zelle",
+   "name": "Zelle",
+   "type": "manual",
+   "fee": 0,
+   "identifier": "EnergiX Wellness LLC | Contact Name Joy | 531-363-4955",
+   "description": "No fee"
+  },
+  {
+   "id": "chime",
+   "name": "Chime",
+   "type": "manual",
+   "fee": 0,
+   "identifier": "$Joy-Damian",
+   "qrCode": "/uploads/chime-qr.jpg",
+   "description": "No fee"
+  },
+  {
+   "id": "bitcoin",
+   "name": "Bitcoin",
+   "type": "crypto",
+   "fee": 0,
+   "address": "bc1qexample0000000000000000000000000000",
+   "description": "No fee"
+  },
+  {
+   "id": "usdt",
+   "name": "USDT Tether",
+   "type": "crypto",
+   "fee": 0,
+   "address": "FNVZV2FfNd6oZnxs2daxQt27HfB1rrynWDqz4PJg9pr3",
+   "warning": "SOL Network ONLY - Do not use another Network as it will be lost and not received",
+   "description": "No fee"
+  },
+  {
+   "id": "usdt_eth",
+   "name": "USDT (ETH)",
+   "type": "crypto",
+   "fee": 0,
+   "address": "0xD9CC5202e7E68F08F969B69FdE0181412eF79637",
+   "warning": "Ethereum Network ONLY",
+   "description": "No fee"
+  },
+  {
+   "id": "usdc",
+   "name": "USDC",
+   "type": "crypto",
+   "fee": 0,
+   "address": "0xD9CC5202e7E68F08F969B69FdE0181412eF79637",
+   "networks": "Ethereum or Base networks - both auto-detected. Do not use Solana, Polygon, or any other network as funds will be lost.",
+   "description": "No fee"
+  },
+  {
+   "id": "pyusd",
+   "name": "PYUSD (Crypto)",
+   "type": "crypto",
+   "fee": 0,
+   "address": "FNVZV2FfNd6oZnxs2daxQt27HfB1rrynWDqz4PJg9pr3",
+   "note": "PYUSD is CRYPTOCURRENCY - NOT a PayPal payment! Send on Solana Network to wallet address.",
+   "description": "No fee"
+  }
+ ]
+}

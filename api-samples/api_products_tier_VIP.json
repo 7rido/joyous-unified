@@ -1,0 +1,2343 @@
+{
+ "products": [
+  {
+   "id": "b7446dc6-a02c-45a8-b0ca-44a3f9c8dbb3",
+   "name": "5Amino 1mq",
+   "slug": "5amino1mq",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 10,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CEL-0001-1790142865535.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "d4ae0614-82e9-4db5-b7c8-4313b1d4c12e",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 10,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "747666f8-57bb-419f-9d32-94ea4121d0aa",
+       "variantId": "d4ae0614-82e9-4db5-b7c8-4313b1d4c12e",
+       "minQuantity": 5,
+       "packPrice": 45,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-13T19:37:58.025Z"
+      },
+      {
+       "id": "b38c0226-630e-4a9e-8182-294bcbfdc852",
+       "variantId": "d4ae0614-82e9-4db5-b7c8-4313b1d4c12e",
+       "minQuantity": 10,
+       "packPrice": 80,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-13T19:37:58.025Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "5d0e85ba-08c6-4c28-97db-1afebd782648",
+     "name": "50mg vial",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 18,
+     "stockQty": 395,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "d9be990c-f051-484b-8bd5-46b4e4cc58e7",
+       "variantId": "5d0e85ba-08c6-4c28-97db-1afebd782648",
+       "minQuantity": 5,
+       "packPrice": 75,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-13T19:37:58.069Z"
+      },
+      {
+       "id": "308d415d-ed91-444a-a229-c49170b21cb6",
+       "variantId": "5d0e85ba-08c6-4c28-97db-1afebd782648",
+       "minQuantity": 10,
+       "packPrice": 140,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-13T19:37:58.069Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 395
+    }
+   ]
+  },
+  {
+   "id": "587fdd81-3617-4c5b-a847-fc047a3baf63",
+   "name": "AOD-9604",
+   "slug": "aod-9604-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 20,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-GRO-0001-1791739998979.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "777e3994-9264-4b12-a2e8-568cc8c7509a",
+     "name": "2mg | vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 20,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "f06b42f8-643e-46cd-b1e0-de2d81756128",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 20,
+     "stockQty": 395,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "bb5e5fa9-4ff0-4172-a25b-8d6125136dfa",
+       "variantId": "f06b42f8-643e-46cd-b1e0-de2d81756128",
+       "minQuantity": 5,
+       "packPrice": 80,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:33:53.936Z"
+      },
+      {
+       "id": "0f313a00-58eb-4652-88ac-7b928dbf30db",
+       "variantId": "f06b42f8-643e-46cd-b1e0-de2d81756128",
+       "minQuantity": 10,
+       "packPrice": 150,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:33:53.936Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 395
+    }
+   ]
+  },
+  {
+   "id": "f40bd006-c0cf-4271-9072-eef8ead52888",
+   "name": "BPC-157",
+   "slug": "bpc-157-tissue-signaling-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-BAR-0001-1791740059209.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "b907f323-ce51-4721-987d-19c922fd2688",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "9318746c-7062-4f8e-a4f2-cf636addf281",
+       "variantId": "b907f323-ce51-4721-987d-19c922fd2688",
+       "minQuantity": 5,
+       "packPrice": 60,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:12.491Z"
+      },
+      {
+       "id": "6027c4e9-4fee-4609-a0a7-0b9cc1641416",
+       "variantId": "b907f323-ce51-4721-987d-19c922fd2688",
+       "minQuantity": 10,
+       "packPrice": 100,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:12.491Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "2758ed0d-e5fb-44ce-b48a-ff44098df2ce",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 20,
+     "stockQty": 407,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "6e4ef116-2c8b-4a36-81e2-cf5995b28614",
+       "variantId": "2758ed0d-e5fb-44ce-b48a-ff44098df2ce",
+       "minQuantity": 5,
+       "packPrice": 80,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:12.516Z"
+      },
+      {
+       "id": "a15aea81-5e61-4a48-9d6a-847aa7cdc13a",
+       "variantId": "2758ed0d-e5fb-44ce-b48a-ff44098df2ce",
+       "minQuantity": 10,
+       "packPrice": 150,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:12.516Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 407
+    }
+   ]
+  },
+  {
+   "id": "bc9ddd8c-192f-4bed-81f3-b85a26aece64",
+   "name": "Bacteriostatic Water \u2014 Laboratory Preparation Solution (RUO)",
+   "slug": "bacteriostatic-water-laboratory-preparation-solution-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 5,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-LAB-0001-1772906661967.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "41b76760-0ec1-43aa-8ec1-f2e12682d7d9",
+     "name": "30ml Vial",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 4,
+     "pricePerUnit": 22,
+     "stockQty": 83,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 83
+    }
+   ]
+  },
+  {
+   "id": "14116fc3-b81c-4779-b316-d345c0ca7c5b",
+   "name": "CJC-1295 (No DAC)",
+   "slug": "cjc-1295-no-dac-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 30,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-GRO-0004-1791740081698.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "6b8d9a45-a9a5-4f0c-90ef-b3d2c652897c",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 20,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "2e74f59d-9139-47a4-980b-f9febae703dd",
+       "variantId": "6b8d9a45-a9a5-4f0c-90ef-b3d2c652897c",
+       "minQuantity": 5,
+       "packPrice": 70,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:54.944Z"
+      },
+      {
+       "id": "0179c17f-5f33-4218-ba71-18df0afacdea",
+       "variantId": "6b8d9a45-a9a5-4f0c-90ef-b3d2c652897c",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:34:54.944Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 20
+    }
+   ]
+  },
+  {
+   "id": "fca99dff-eee6-4f45-b411-9d1f1266188e",
+   "name": "Cagrilintide",
+   "slug": "cagrilintide-amylin-receptor-reference-peptide-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 25,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MET-0003-1791740144012.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "e41f1d19-28f1-4694-b4a0-77d79555241e",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 25,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "1cca94a5-2fe6-4f81-81f6-3c9568282b9b",
+       "variantId": "e41f1d19-28f1-4694-b4a0-77d79555241e",
+       "minQuantity": 5,
+       "packPrice": 110,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:35:35.289Z"
+      },
+      {
+       "id": "16c9a690-91ba-4502-bc17-cb1ef401d6f0",
+       "variantId": "e41f1d19-28f1-4694-b4a0-77d79555241e",
+       "minQuantity": 10,
+       "packPrice": 190,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T17:35:35.289Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "68084f39-b834-405a-b7af-2960529bf2a2",
+   "name": "Cerebrolysin",
+   "slug": "cerebrolysin",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 60,
+   "stockQty": 200,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-NEU-0001-1791740582997.webp",
+     "sortOrder": 0
+    },
+    {
+     "url": "/uploads/products/JOY-NEU-0001-1771299898372.webp",
+     "sortOrder": 1
+    },
+    {
+     "url": "/uploads/products/JOY-NEU-0001-1771299901906.webp",
+     "sortOrder": 2
+    },
+    {
+     "url": "/uploads/products/JOY-NEU-0001-1771299920437.webp",
+     "sortOrder": 3
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "e82ead82-ad87-4013-92d9-82f911882e05",
+     "name": "5ml ampoule / 5 ampoules per box",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 60,
+     "stockQty": 136,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "140c643f-c8cf-4d91-9306-47ad8f4d9ec3",
+       "variantId": "e82ead82-ad87-4013-92d9-82f911882e05",
+       "minQuantity": 4,
+       "packPrice": 220,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-02-17T17:15:20.867Z"
+      },
+      {
+       "id": "08e7a880-0e8b-4bb2-9609-cef03614af88",
+       "variantId": "e82ead82-ad87-4013-92d9-82f911882e05",
+       "minQuantity": 8,
+       "packPrice": 400,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-02-17T17:15:20.867Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 136
+    }
+   ]
+  },
+  {
+   "id": "ec76b6f1-fa51-4027-bb51-9a14fda6700b",
+   "name": "GHK-CU",
+   "slug": "ghk-cu-copper-peptide-signaling-research-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 20,
+   "stockQty": 138,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-EXT-0001-1791740626007.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "3ce93b07-8c48-43b5-bd0b-9986a25c2eb0",
+     "name": "100mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 20,
+     "stockQty": 138,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "d6f680f7-59e6-43e9-9170-c76f698bfe13",
+       "variantId": "3ce93b07-8c48-43b5-bd0b-9986a25c2eb0",
+       "minQuantity": 5,
+       "packPrice": 70,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T19:14:57.867Z"
+      },
+      {
+       "id": "4cfc3815-3833-4176-89bd-845799293976",
+       "variantId": "3ce93b07-8c48-43b5-bd0b-9986a25c2eb0",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-11T19:14:57.867Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 138
+    }
+   ]
+  },
+  {
+   "id": "c046c868-6e6b-4ef6-b23b-737e0a2af535",
+   "name": "Ipamorelin",
+   "slug": "ipamorelin-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 445,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0022-1791815844091.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "ebb970e9-13ba-437e-9a4a-9be32aeff7e6",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 445,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "6a3daa23-61b8-4b8d-9956-9747cbcdf33a",
+       "variantId": "ebb970e9-13ba-437e-9a4a-9be32aeff7e6",
+       "minQuantity": 5,
+       "packPrice": 65,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:37:17.504Z"
+      },
+      {
+       "id": "5ebc593a-2659-429f-ab64-8cdff914080d",
+       "variantId": "ebb970e9-13ba-437e-9a4a-9be32aeff7e6",
+       "minQuantity": 10,
+       "packPrice": 110,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:37:17.504Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 445
+    },
+    {
+     "id": "532b1383-e094-43e7-9216-3aa40d8f575e",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 15,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "b9f7db95-4490-450d-9a25-fcc67424b208",
+       "variantId": "532b1383-e094-43e7-9216-3aa40d8f575e",
+       "minQuantity": 5,
+       "packPrice": 65,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:37:17.531Z"
+      },
+      {
+       "id": "88a3cb83-fe62-4d87-aa7c-935fe1a19a6b",
+       "variantId": "532b1383-e094-43e7-9216-3aa40d8f575e",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:37:17.531Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "4913ca00-27d0-4f68-9b47-0471818f5a54",
+   "name": "JB-1-S",
+   "slug": "js-glp-01-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 390,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MET-0002-1791815888829.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "c32d4ad3-bb19-4bf5-aedd-56e17f6c7d85",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 390,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "4633a851-a5ca-432a-85a1-b4b74ace7c93",
+       "variantId": "c32d4ad3-bb19-4bf5-aedd-56e17f6c7d85",
+       "minQuantity": 5,
+       "packPrice": 65,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:38:00.823Z"
+      },
+      {
+       "id": "0c31577d-a186-420e-b87a-dd9f2c998f92",
+       "variantId": "c32d4ad3-bb19-4bf5-aedd-56e17f6c7d85",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:38:00.823Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 390
+    },
+    {
+     "id": "f114c1f4-fb54-46e9-8d7b-96ebabd489f5",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 1,
+     "pricePerUnit": 20,
+     "stockQty": 341,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "e57e1290-117a-45c4-babe-7898e9b82ba6",
+       "variantId": "f114c1f4-fb54-46e9-8d7b-96ebabd489f5",
+       "minQuantity": 5,
+       "packPrice": 90,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:38:00.843Z"
+      },
+      {
+       "id": "12c05100-cbda-49eb-85dc-5aab390d346e",
+       "variantId": "f114c1f4-fb54-46e9-8d7b-96ebabd489f5",
+       "minQuantity": 10,
+       "packPrice": 180,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:38:00.843Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 341
+    }
+   ]
+  },
+  {
+   "id": "1ae70e26-d103-46e3-8978-e62139f7ef29",
+   "name": "JB-2-T",
+   "slug": "js-glp-02-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 1,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MET-0001-1791815942094.webp",
+     "sortOrder": 2
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "dde65a56-96a9-4dc0-9e0c-ae59469e1655",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 18,
+     "stockQty": 854,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "e9c9e8c3-00ac-4928-b470-3584512dfb52",
+       "variantId": "dde65a56-96a9-4dc0-9e0c-ae59469e1655",
+       "minQuantity": 5,
+       "packPrice": 80,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.461Z"
+      },
+      {
+       "id": "ff30c035-6e14-436b-89ab-60c03ddbf539",
+       "variantId": "dde65a56-96a9-4dc0-9e0c-ae59469e1655",
+       "minQuantity": 10,
+       "packPrice": 145,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.461Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 854
+    },
+    {
+     "id": "5b27cfce-7517-4535-9599-31530b90d7e9",
+     "name": "25mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 3,
+     "pricePerUnit": 25,
+     "stockQty": 330,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "0f19df37-d958-4529-a4d3-0edd8abbc67a",
+       "variantId": "5b27cfce-7517-4535-9599-31530b90d7e9",
+       "minQuantity": 5,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.501Z"
+      },
+      {
+       "id": "a062ca9a-ab81-44d8-a784-18d79d6f0cde",
+       "variantId": "5b27cfce-7517-4535-9599-31530b90d7e9",
+       "minQuantity": 10,
+       "packPrice": 200,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.501Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 330
+    },
+    {
+     "id": "6c1e8773-e616-49b4-966d-43c0df048c22",
+     "name": "30mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 4,
+     "pricePerUnit": 40,
+     "stockQty": 547,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "9e3df4b5-c83e-46cf-ba8d-902d4d0f30d5",
+       "variantId": "6c1e8773-e616-49b4-966d-43c0df048c22",
+       "minQuantity": 5,
+       "packPrice": 160,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.521Z"
+      },
+      {
+       "id": "4fa166ec-f8de-45ba-96c3-4ddd599d9e41",
+       "variantId": "6c1e8773-e616-49b4-966d-43c0df048c22",
+       "minQuantity": 10,
+       "packPrice": 280,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.521Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 547
+    },
+    {
+     "id": "970b4574-6f74-48de-8239-f302745800ba",
+     "name": "50mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 6,
+     "pricePerUnit": 50,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "84b5ec1f-0392-41bb-b7f7-26abc9f32922",
+       "variantId": "970b4574-6f74-48de-8239-f302745800ba",
+       "minQuantity": 5,
+       "packPrice": 200,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.547Z"
+      },
+      {
+       "id": "7be8d43d-9a0a-4381-8b9c-f756c466096b",
+       "variantId": "970b4574-6f74-48de-8239-f302745800ba",
+       "minQuantity": 10,
+       "packPrice": 375,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:12.547Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "7a46980f-2d32-4a50-9dd8-2af7151e1a80",
+   "name": "JB-3-R",
+   "slug": "js-glp-03-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 30,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-INJ-0003-1791815988208.webp",
+     "sortOrder": 2
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "b7e5ef35-7edb-4a14-8cbe-1402a40098c4",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 1,
+     "pricePerUnit": 30,
+     "stockQty": 219,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "e6537d32-8dcf-475e-986f-fee502a1c860",
+       "variantId": "b7e5ef35-7edb-4a14-8cbe-1402a40098c4",
+       "minQuantity": 5,
+       "packPrice": 130,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.672Z"
+      },
+      {
+       "id": "18f2f0cb-e61d-40e2-b5dd-9ff86e03e965",
+       "variantId": "b7e5ef35-7edb-4a14-8cbe-1402a40098c4",
+       "minQuantity": 10,
+       "packPrice": 240,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.672Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 219
+    },
+    {
+     "id": "ed3ad0f5-8454-4f7e-9da6-38296ee142ef",
+     "name": "15mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 2,
+     "pricePerUnit": 40,
+     "stockQty": 169,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "86281694-1f07-4575-ab48-4b7a8b09902a",
+       "variantId": "ed3ad0f5-8454-4f7e-9da6-38296ee142ef",
+       "minQuantity": 5,
+       "packPrice": 140,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.697Z"
+      },
+      {
+       "id": "261b9593-3b23-4e86-a13c-d02ecd8457bf",
+       "variantId": "ed3ad0f5-8454-4f7e-9da6-38296ee142ef",
+       "minQuantity": 10,
+       "packPrice": 270,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.697Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 169
+    },
+    {
+     "id": "3672586f-1236-4f3e-abc0-be70e098840c",
+     "name": "30mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 3,
+     "pricePerUnit": 60,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "4caa63e6-8acf-4cce-80c2-f783385fcc94",
+       "variantId": "3672586f-1236-4f3e-abc0-be70e098840c",
+       "minQuantity": 5,
+       "packPrice": 165,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.720Z"
+      },
+      {
+       "id": "1d589782-03e4-41a2-8174-3f9f8f9d7d3f",
+       "variantId": "3672586f-1236-4f3e-abc0-be70e098840c",
+       "minQuantity": 10,
+       "packPrice": 300,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:39:40.720Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "c098f081-8bde-4738-a128-6301183208b6",
+   "name": "L-Carnitine \u2014 Cellular Energy Transport",
+   "slug": "l-carnitine-cellular-energy-transport-research-compound-ruo",
+   "isNew": true,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 45,
+   "stockQty": 200,
+   "saleDiscount": null,
+   "category": {
+    "id": "3b3fc024-0073-44ed-8550-119356e9047d",
+    "name": "Amino Blends",
+    "slug": "amino-blends",
+    "code": "AMI",
+    "description": null,
+    "image": null,
+    "icon": "sparkle",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 3,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T01:17:57.638Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MIC-0003-1789342581744.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "cfd74195-63d0-4c55-956b-deb5fc86067f",
+     "name": "600mg/ml | 20ml vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 45,
+     "stockQty": 195,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 195
+    }
+   ]
+  },
+  {
+   "id": "420dc7b2-f785-413a-a97f-73c166f10618",
+   "name": "L-Glutathione (Lyophilized) \u2014 Redox Signaling Reference Compound (RUO)",
+   "slug": "l-glutathione-lyophilized-redox-signaling-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 150,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-RED-0001-1772825412918.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "e45f4787-326a-4190-98ab-61893f8a97f1",
+     "name": "600mg / 10 vial box",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 90,
+     "stockQty": 47,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 47
+    },
+    {
+     "id": "3429478f-922c-46e4-b103-c792ae9ba50e",
+     "name": "340mg / 10 vial box",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 2,
+     "pricePerUnit": 45,
+     "stockQty": 49,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 49
+    },
+    {
+     "id": "b2709632-be16-4178-b18a-66bc5f6bb334",
+     "name": "1800mg vial",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 3,
+     "pricePerUnit": 25,
+     "stockQty": 994,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "8c527b90-755d-4f79-9977-a30880a6e93c",
+       "variantId": "b2709632-be16-4178-b18a-66bc5f6bb334",
+       "minQuantity": 5,
+       "packPrice": 110,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-09-22T18:14:48.613Z"
+      },
+      {
+       "id": "aeab4f28-890e-4a2b-bb37-34a7d4f7e686",
+       "variantId": "b2709632-be16-4178-b18a-66bc5f6bb334",
+       "minQuantity": 10,
+       "packPrice": 200,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-09-22T18:14:48.613Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 994
+    }
+   ]
+  },
+  {
+   "id": "46ed5635-886b-419b-aca2-37eb586c588c",
+   "name": "Melanotan I",
+   "slug": "melanotan-1-melanocortin-receptor-reference-peptide-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 182,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MEL-0001-1791816380527.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "01ed3b2a-4105-4fbe-9358-883c38e551ee",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 182,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "1c0c3c32-5fac-411a-abe3-da2c4d0a80d3",
+       "variantId": "01ed3b2a-4105-4fbe-9358-883c38e551ee",
+       "minQuantity": 5,
+       "packPrice": 65,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:46:12.276Z"
+      },
+      {
+       "id": "ba558249-631e-47cb-84a4-8979b3eb943e",
+       "variantId": "01ed3b2a-4105-4fbe-9358-883c38e551ee",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:46:12.276Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 182
+    }
+   ]
+  },
+  {
+   "id": "006762dd-c2d6-4c51-b595-09cf54678aee",
+   "name": "Melanotan II",
+   "slug": "melanotan-ii-melanocortin-receptor-reference-peptide-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 344,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MEL-0002-1791816417998.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "afeb51a2-9b2e-4111-81ff-09e22e5b726a",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 344,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "c21cac36-0ef3-47ad-afd4-607fc86aa27e",
+       "variantId": "afeb51a2-9b2e-4111-81ff-09e22e5b726a",
+       "minQuantity": 5,
+       "packPrice": 65,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:46:48.359Z"
+      },
+      {
+       "id": "2f209a99-1413-4694-80c5-552b4b22c735",
+       "variantId": "afeb51a2-9b2e-4111-81ff-09e22e5b726a",
+       "minQuantity": 10,
+       "packPrice": 120,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:46:48.359Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 344
+    }
+   ]
+  },
+  {
+   "id": "1ebab788-1cab-4811-99aa-d734a49bd5fc",
+   "name": "Methylcobalamin (Methylated Vitamin B12)",
+   "slug": "methylcobalamin-methylated-vitamin-b12-enzymatic-cofactor-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 15,
+   "stockQty": 11,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CEL1-0001-1789343068795.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "f7bbb1a3-675a-4c56-b520-285303702965",
+     "name": "1000mcg/ml / 10ml Vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 15,
+     "stockQty": 5,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 5
+    },
+    {
+     "id": "cd8aca0b-7df0-4afe-8247-eff15e54ee8c",
+     "name": "1000mcg/ml / 20ml Vial",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 25,
+     "stockQty": 27,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 27
+    }
+   ]
+  },
+  {
+   "id": "390b8951-424d-4e02-80a6-33b2b35d9ff0",
+   "name": "Mots-C",
+   "slug": "mots-c-mitochondrial-signaling-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 35,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CEL-0002-1791816101038.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "0ce3773b-854f-4db9-bdb3-103b90de6bb5",
+     "name": "40mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 35,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "5084a590-6e4d-4bfa-a6b1-6266ae446124",
+       "variantId": "0ce3773b-854f-4db9-bdb3-103b90de6bb5",
+       "minQuantity": 5,
+       "packPrice": 155,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:41:54.538Z"
+      },
+      {
+       "id": "9679fe88-f350-41ad-a9f4-3fe2dc7788b9",
+       "variantId": "0ce3773b-854f-4db9-bdb3-103b90de6bb5",
+       "minQuantity": 10,
+       "packPrice": 280,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:41:54.538Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "00af92b5-d9b9-45da-a9a4-b9b6940976ec",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 20,
+     "stockQty": 314,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "eb0e2471-5105-4085-bf8d-ccfcd8e68e7d",
+       "variantId": "00af92b5-d9b9-45da-a9a4-b9b6940976ec",
+       "minQuantity": 5,
+       "packPrice": 85,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:41:54.565Z"
+      },
+      {
+       "id": "c10d712d-39be-41cb-9785-c96a200cbfc3",
+       "variantId": "00af92b5-d9b9-45da-a9a4-b9b6940976ec",
+       "minQuantity": 10,
+       "packPrice": 160,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T14:41:54.565Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 314
+    }
+   ]
+  },
+  {
+   "id": "bfe73a91-0f39-416f-9945-e2e639028aba",
+   "name": "OPTIBURN DUO",
+   "slug": "optiburn-duo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 55,
+   "stockQty": 42,
+   "saleDiscount": null,
+   "category": {
+    "id": "f108ddf9-2517-414a-be94-0e8eb88d04df",
+    "name": "Capsules",
+    "slug": "capsules",
+    "code": "CAP",
+    "description": null,
+    "image": null,
+    "icon": "capsule",
+    "requiredTier": "USER",
+    "parentId": null,
+    "sortOrder": 2,
+    "isVisible": true,
+    "createdAt": "2026-01-29T05:42:20.939Z",
+    "updatedAt": "2026-09-02T02:03:52.078Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0009-1772823031635.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "ac417016-e2a0-4d4c-bab4-af52fb664a6b",
+     "name": "60 capsules / 500mcg+5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 55,
+     "stockQty": 40,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 40
+    }
+   ]
+  },
+  {
+   "id": "ff4a7f9c-467a-4e3e-b299-553a1360ef22",
+   "name": "Orforglipron \u2014 GLP-1 Receptor Modulator Reference Compound (RUO)",
+   "slug": "orforglipron-glp-1-receptor-modulator-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 75,
+   "stockQty": 100,
+   "saleDiscount": null,
+   "category": {
+    "id": "f108ddf9-2517-414a-be94-0e8eb88d04df",
+    "name": "Capsules",
+    "slug": "capsules",
+    "code": "CAP",
+    "description": null,
+    "image": null,
+    "icon": "capsule",
+    "requiredTier": "USER",
+    "parentId": null,
+    "sortOrder": 2,
+    "isVisible": true,
+    "createdAt": "2026-01-29T05:42:20.939Z",
+    "updatedAt": "2026-09-02T02:03:52.078Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CAP-0027-1772049364605.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "c1ef7134-2f48-467d-b3b3-e6aa3a45adb6",
+     "name": "6mg / 30 capsules",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 75,
+     "stockQty": 73,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 73
+    },
+    {
+     "id": "2f48066d-4a5b-4e1e-8be7-ab8437f13fbf",
+     "name": "12mg / 30 capsules",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 100,
+     "stockQty": 82,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 82
+    },
+    {
+     "id": "1984716d-df55-4e06-af97-dd1698087139",
+     "name": "24mg / 30 capsules",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 2,
+     "pricePerUnit": 150,
+     "stockQty": 85,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 85
+    }
+   ]
+  },
+  {
+   "id": "f40807aa-b15d-4f46-97d8-5b0a6169dc05",
+   "name": "Powered \u2014 Micronutrient Cofactor Research Blend (RUO)",
+   "slug": "powered-micronutrient-cofactor-research-blend-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 25,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MIC-0001-1772827552351.webp",
+     "sortOrder": 0
+    },
+    {
+     "url": "/uploads/products/JYS-MIC-0001-1772828935379.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "dc85ae89-fef6-4f41-96f0-799d169f919c",
+     "name": "Blend / 10ml vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 25,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "d7aa683f-cc69-438a-a00b-514ebba2e1f6",
+   "name": "RECOMPMAX",
+   "slug": "recompmax",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 45,
+   "stockQty": 47,
+   "saleDiscount": null,
+   "category": {
+    "id": "f108ddf9-2517-414a-be94-0e8eb88d04df",
+    "name": "Capsules",
+    "slug": "capsules",
+    "code": "CAP",
+    "description": null,
+    "image": null,
+    "icon": "capsule",
+    "requiredTier": "USER",
+    "parentId": null,
+    "sortOrder": 2,
+    "isVisible": true,
+    "createdAt": "2026-01-29T05:42:20.939Z",
+    "updatedAt": "2026-09-02T02:03:52.078Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0016-1769837049520.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "53c005c7-4d82-410c-9b59-7dd18c0e43ee",
+     "name": "60 capsule / Blend",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 45,
+     "stockQty": 47,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 47
+    }
+   ]
+  },
+  {
+   "id": "c9a50d25-997a-4a5d-96db-9f0de6e56ea1",
+   "name": "REVKINX",
+   "slug": "revkinx",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 35,
+   "stockQty": 22,
+   "saleDiscount": null,
+   "category": {
+    "id": "f108ddf9-2517-414a-be94-0e8eb88d04df",
+    "name": "Capsules",
+    "slug": "capsules",
+    "code": "CAP",
+    "description": null,
+    "image": null,
+    "icon": "capsule",
+    "requiredTier": "USER",
+    "parentId": null,
+    "sortOrder": 2,
+    "isVisible": true,
+    "createdAt": "2026-01-29T05:42:20.939Z",
+    "updatedAt": "2026-09-02T02:03:52.078Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JOY-CAP-0010-1769834556083.webp",
+     "sortOrder": 0
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "0404b8a5-77f5-4b5a-83ca-f22fa61c8134",
+     "name": "60 capsules / 25mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 35,
+     "stockQty": 19,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 19
+    }
+   ]
+  },
+  {
+   "id": "4c97eb9d-bc36-415e-b356-7763e010238a",
+   "name": "Radiant \u2014 Micronutrient Cofactor Research Blend (RUO)",
+   "slug": "radiant-micronutrient-cofactor-research-blend-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 25,
+   "stockQty": 60,
+   "saleDiscount": null,
+   "category": {
+    "id": "a03feb83-8466-4886-a85a-7c975c9253f7",
+    "name": "Injectables",
+    "slug": "injectables",
+    "code": "INJ",
+    "description": null,
+    "image": null,
+    "icon": "folder",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 6,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-22T18:06:42.936Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MIC-0002-1772829969772.webp",
+     "sortOrder": 0
+    },
+    {
+     "url": "/uploads/products/JYS-MIC-0002-1772829979320.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "595a30db-0fb8-4934-a91a-9511b2149c23",
+     "name": "Blend / 10ml Vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 25,
+     "stockQty": 60,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 60
+    }
+   ]
+  },
+  {
+   "id": "cd4c443f-a09b-42ac-8e2a-346bd30852af",
+   "name": "SS-31",
+   "slug": "ss-31-mitochondrial-targeted-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 45,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-CEL-0003-1791818152582.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "e5ca46f6-b945-4d98-a938-336df4a89ee4",
+     "name": "50mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 45,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "7146599e-480d-4977-90d1-ad8c82b59b52",
+       "variantId": "e5ca46f6-b945-4d98-a938-336df4a89ee4",
+       "minQuantity": 5,
+       "packPrice": 210,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:15:44.071Z"
+      },
+      {
+       "id": "0b547e45-165a-44b1-b55c-1edce6aab26d",
+       "variantId": "e5ca46f6-b945-4d98-a938-336df4a89ee4",
+       "minQuantity": 10,
+       "packPrice": 400,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:15:44.071Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    }
+   ]
+  },
+  {
+   "id": "ba41a47d-5109-4fad-9d3a-dfb4c9811d02",
+   "name": "Sermorelin",
+   "slug": "sermorelin-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 0.01,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-GRO-0003-1791818185050.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "82893ca1-5de3-4ac5-9b31-1b019dd63363",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 0.01,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "7d448955-59b0-4b0c-9813-b329733e0e90",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 0.01,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "980073c2-5ea0-411a-be60-c36f3de796af",
+     "name": "15mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 2,
+     "pricePerUnit": 25,
+     "stockQty": 103,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "94bebb61-abe8-4b6a-af21-3f63a4ca254c",
+       "variantId": "980073c2-5ea0-411a-be60-c36f3de796af",
+       "minQuantity": 5,
+       "packPrice": 110,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:17.605Z"
+      },
+      {
+       "id": "956dc7fc-9164-4998-9c7e-a60cb790ff33",
+       "variantId": "980073c2-5ea0-411a-be60-c36f3de796af",
+       "minQuantity": 10,
+       "packPrice": 200,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:17.605Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 103
+    }
+   ]
+  },
+  {
+   "id": "96bd677c-a9a0-4ffa-a86d-5fc6b7ea16d1",
+   "name": "Setmelanotide",
+   "slug": "setmelanotide-melanocortin-receptor-signaling-peptide",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 20,
+   "stockQty": 270,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-MET-0004-1791818103778.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "8d7279d6-fb37-4903-82d6-7ca542386898",
+     "name": "10mg vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 20,
+     "stockQty": 270,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "523f8c5d-e78e-4ce4-a9a3-e65c31d53ddf",
+       "variantId": "8d7279d6-fb37-4903-82d6-7ca542386898",
+       "minQuantity": 5,
+       "packPrice": 85,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:14:55.619Z"
+      },
+      {
+       "id": "8b2954f2-9274-44f2-a3e9-3628fd2ba114",
+       "variantId": "8d7279d6-fb37-4903-82d6-7ca542386898",
+       "minQuantity": 10,
+       "packPrice": 150,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:14:55.619Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 270
+    }
+   ]
+  },
+  {
+   "id": "343162e2-ab4b-4ca8-b7d0-ee67b58b8f49",
+   "name": "TB-500",
+   "slug": "tb-500-cytoskeletal-signaling-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 20,
+   "stockQty": 0,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-BAR-0002-1791818223627.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "9e2ac21b-b043-4b41-a9ad-e97b12aafd7b",
+     "name": "5mg",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 20,
+     "stockQty": 0,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "de1df3fb-ce83-4ca1-a153-4c26ac659df1",
+       "variantId": "9e2ac21b-b043-4b41-a9ad-e97b12aafd7b",
+       "minQuantity": 5,
+       "packPrice": 75,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:57.528Z"
+      },
+      {
+       "id": "b89f165f-f037-4686-bec9-969f6b9f20a5",
+       "variantId": "9e2ac21b-b043-4b41-a9ad-e97b12aafd7b",
+       "minQuantity": 10,
+       "packPrice": 150,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:57.528Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 0
+    },
+    {
+     "id": "3d4530f6-3796-4d35-b780-310ca4c8366a",
+     "name": "10mg",
+     "isVisible": true,
+     "isDefault": false,
+     "sortOrder": 1,
+     "pricePerUnit": 25,
+     "stockQty": 387,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "5ae1ee38-ede4-444f-8d79-47dae8227306",
+       "variantId": "3d4530f6-3796-4d35-b780-310ca4c8366a",
+       "minQuantity": 5,
+       "packPrice": 110,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:57.549Z"
+      },
+      {
+       "id": "2a4d3c03-2dce-4ba1-9ab0-408c5cd0d70f",
+       "variantId": "3d4530f6-3796-4d35-b780-310ca4c8366a",
+       "minQuantity": 10,
+       "packPrice": 200,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:16:57.549Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 387
+    }
+   ]
+  },
+  {
+   "id": "479dc0f6-35e7-4be6-8d5b-600bf79dd409",
+   "name": "Tesamorelin",
+   "slug": "tesamorelin-peptide-reference-compound-ruo",
+   "isNew": false,
+   "productType": "VIALS",
+   "requiredTier": "VIP",
+   "pricePerUnit": 25,
+   "stockQty": 85,
+   "saleDiscount": null,
+   "category": {
+    "id": "6ba4088f-d47d-405d-b4f7-ee545cd0c43c",
+    "name": "Peptides",
+    "slug": "peptides",
+    "code": "PEP",
+    "description": null,
+    "image": null,
+    "icon": "syringe",
+    "requiredTier": "VIP",
+    "parentId": null,
+    "sortOrder": 1,
+    "isVisible": true,
+    "createdAt": "2026-08-31T01:14:47.680Z",
+    "updatedAt": "2026-09-02T02:38:15.353Z"
+   },
+   "tags": [],
+   "images": [
+    {
+     "url": "/uploads/products/JYS-GRO-0002-1791818252168.webp",
+     "sortOrder": 1
+    }
+   ],
+   "quantityDiscounts": [],
+   "variants": [
+    {
+     "id": "52b5d8eb-9cf5-4ef8-9723-528b7c81a711",
+     "name": "10mg / vial",
+     "isVisible": true,
+     "isDefault": true,
+     "sortOrder": 0,
+     "pricePerUnit": 25,
+     "stockQty": 85,
+     "saleDiscount": null,
+     "quantityDiscounts": [
+      {
+       "id": "7c2b7bae-aa37-401a-81eb-6b131c54a059",
+       "variantId": "52b5d8eb-9cf5-4ef8-9723-528b7c81a711",
+       "minQuantity": 5,
+       "packPrice": 115,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:17:25.236Z"
+      },
+      {
+       "id": "70546025-e39f-4139-a99a-8747f6e6c332",
+       "variantId": "52b5d8eb-9cf5-4ef8-9723-528b7c81a711",
+       "minQuantity": 10,
+       "packPrice": 225,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null,
+       "createdAt": "2026-10-12T15:17:25.236Z"
+      }
+     ],
+     "images": [],
+     "availableStock": 85
+    }
+   ]
+  }
+ ]
+}

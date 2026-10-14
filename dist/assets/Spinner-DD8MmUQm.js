@@ -1,0 +1,1 @@
+import{j as e}from"./index-CI8edidq.js";function n({label:r="Loading"}){return e.jsx("div",{className:"flex-1 flex items-center justify-center py-24",role:"status","aria-label":r,children:e.jsx("div",{className:"w-9 h-9 border-4 border-sun border-t-transparent rounded-full animate-spin"})})}export{n as S};
