@@ -75,6 +75,57 @@ try {
   console.log(`  seeded ${inventoryTests.length} inventory test products`)
 } catch { /* suite not generated */ }
 
+/**
+ * THE PRICE AUTHORITY.
+ *
+ * Nothing the client sends may influence what a line costs. The client does send a
+ * `packPrice` and `packSize`, because the pack options it renders come from the
+ * catalogue's own `quantityDiscounts` - but those fields are treated as a REQUEST to
+ * use a pack ("the 5-pack"), never as the price. The price is looked up here from the
+ * catalogue using (variantId, minQuantity).
+ *
+ * This existed as a real vulnerability: the order total read `line.packPrice` first,
+ * so `POST /api/cart {packPrice:1}` on a $25 product produced a $250 checkout summary
+ * and a $10 charge, and `packPrice:-100` produced a NEGATIVE total.
+ *
+ * Returns { ok, unitPrice, reason }. Anything not resolvable in the catalogue is
+ * refused rather than defaulted, because a default is a price the caller chose.
+ */
+function resolveLinePrice(line) {
+  const product = catalogProducts.find((x) => x.id === line.productId)
+  if (!product) return { ok: false, reason: 'unknown product' }
+  const variants = product.variants ?? []
+  const variant = variants.find((v) => v.id === line.variantId) ?? variants[0]
+  if (!variant) return { ok: false, reason: 'unknown variant' }
+
+  const base = variant.pricePerUnit ?? product.pricePerUnit
+  if (typeof base !== 'number' || !Number.isFinite(base) || base < 0) {
+    return { ok: false, reason: 'catalogue price is not a valid number' }
+  }
+  const saleOff = variant.saleDiscount ?? product.saleDiscount ?? 0
+  const single = Math.max(base - (typeof saleOff === 'number' ? saleOff : 0), 0)
+
+  // No pack requested -> the single-unit price from the catalogue.
+  if (line.packSize == null) return { ok: true, unitPrice: single, source: 'catalogue' }
+
+  // A pack was requested: it must EXIST in the catalogue for this variant, and the
+  // price comes from there. An unknown pack is refused, not silently repriced.
+  const packs = (variant.quantityDiscounts ?? product.quantityDiscounts ?? [])
+    .filter((d) => d && d.packPrice != null && d.packPrice > 0)
+  const pack = packs.find((d) => d.minQuantity === line.packSize)
+  if (!pack) return { ok: false, reason: `no ${line.packSize}-pack defined for this variant` }
+  const packOff = typeof pack.saleDiscount === 'number' ? pack.saleDiscount : 0
+  const unitPrice = Math.max(pack.packPrice - packOff, 0)
+  return {
+    ok: true,
+    unitPrice,
+    source: 'catalogue.quantityDiscounts',
+    // Recorded so a mismatch between what the client asked for and what the catalogue
+    // says can be reported rather than silently applied.
+    forged: line.packPrice != null && line.packPrice !== unitPrice ? line.packPrice : null,
+  }
+}
+
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
 const wireStock = (n) => (n === Infinity ? UNLIMITED_STOCK : n)
 
@@ -423,7 +474,13 @@ const server = createServer(async (req, res) => {
         const gi = line.groupBuyItem ?? {}
         const v = line.variant ?? {}
         const qty = line.quantity ?? 1
-        const unit = line.packPrice ?? v.pricePerUnit ?? prod.pricePerUnit ?? gi.pricePerUnit ?? 0
+        // Price from the catalogue via the shared authority, NOT from the cart line.
+        // Group buy items have no catalogue entry of their own, so they fall back to
+        // the campaign item's price, which is also server-recorded data.
+        const priced = resolveLinePrice(line)
+        const unit = priced.ok
+          ? priced.unitPrice
+          : (gi.pricePerUnit ?? v.pricePerUnit ?? prod.pricePerUnit ?? 0)
         // Field names are the ones OrderDetail reads:
         //   n.product || n.groupBuyItem || n.saleItem     -> the item record
         //   n.totalPrice || n.pricePerUnit * n.quantity   -> line total
@@ -442,9 +499,15 @@ const server = createServer(async (req, res) => {
       shippingAddress: body.shippingAddress ?? body.address ?? null,
       payment: body.payment ?? { method: body.paymentMethod ?? null, transactionHash: body.paymentProof?.transactionHash ?? null },
       paymentProof: null,
+      // The single place a total is computed. Uses the SAME resolver as the order
+      // lines and the checkout summary, so the number shown and the number charged
+      // cannot diverge - which is exactly how the packPrice forgery worked.
       total: cart.reduce((sum, line) => {
         const v = line.variant ?? {}; const prod = line.product ?? {}; const gi = line.groupBuyItem ?? {}
-        const unit = line.packPrice ?? v.pricePerUnit ?? prod.pricePerUnit ?? gi.pricePerUnit ?? 0
+        const priced = resolveLinePrice(line)
+        const unit = priced.ok
+          ? priced.unitPrice
+          : (gi.pricePerUnit ?? v.pricePerUnit ?? prod.pricePerUnit ?? 0)
         return sum + unit * (line.quantity ?? 1)
       }, 0),
       createdAt: new Date().toISOString(),
@@ -561,7 +624,12 @@ const server = createServer(async (req, res) => {
   // pricing (tier discounts, fees, shipping rules) is not something this mock can
   // reproduce faithfully. Treat the arithmetic as invented and the shape as derived.
   if (pathname === '/api/checkout/validate-cart' && req.method === 'POST') {
+    // Same authority as the order path. Previously this read `v.pricePerUnit` while
+    // the order read `line.packPrice`, which is why a forged pack produced a $250
+    // checkout summary and a $10 charge.
     const unit = (line) => {
+      const priced = resolveLinePrice(line)
+      if (priced.ok) return priced.unitPrice
       const v = line.variant ?? {}
       const prod = line.product ?? {}
       const base = v.pricePerUnit ?? prod.pricePerUnit ?? 0
@@ -613,7 +681,18 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST') {
       let body = {}
       try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
-      const qty = Number(body.quantity) || 1
+      // Quantities are positive whole numbers. `Number(x) || 1` let -5 through, which
+      // a negative packPrice could then turn into a credit rather than a charge.
+      const rawQty = Number(body.quantity ?? 1)
+      if (!Number.isFinite(rawQty) || !Number.isInteger(rawQty) || rawQty < 1 || rawQty > 10000) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({
+          error: 'Invalid quantity',
+          message: 'Quantity must be a whole number between 1 and 10000.',
+        }))
+        return
+      }
+      const qty = rawQty
       // Adding a product already in the cart INCREMENTS its line rather than
       // appending a second one. Pushing unconditionally left the same item as
       // repeated lines with the true total split across them.
@@ -658,15 +737,35 @@ const server = createServer(async (req, res) => {
           quantity: qty, product: null, variant: null, groupBuyItem: null, saleItem: { id: body.saleItemId }, campaign: null })
       } else if (body.productId) {
         const product = catalogProducts.find((x) => x.id === body.productId) ?? null
-        const variants = product?.variants ?? []
+        if (!product) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'Unknown product', message: 'That product is not in the catalogue.' }))
+          return
+        }
+        const variants = product.variants ?? []
         const variant = variants.find((v) => v.id === body.variantId) ?? variants[0] ?? null
-        // Pack deals are selected on the detail page and travel on the line:
+
+        // Pack deals are selected on the detail page and travel on the line as
         //   {packType:"5-pack", packSize:5, packPrice:65}
-        // The cart prices such a line as packPrice * quantity, so dropping these
-        // fields silently repriced a $65 five-pack as 5 x $15 = $75.
+        // `packSize` is honoured because it names a pack the catalogue defines.
+        // `packPrice` is NOT trusted - it is compared against the catalogue price and
+        // the catalogue wins. A forged value is dropped and logged.
+        const priced = resolveLinePrice({ productId: body.productId, variantId: body.variantId ?? variant?.id ?? null, packSize: body.packSize ?? null, packPrice: body.packPrice ?? null })
+        if (!priced.ok) {
+          console.log(`  [price] REFUSED cart line: ${priced.reason}`)
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'Cannot price that item', message: `This item could not be priced: ${priced.reason}.` }))
+          return
+        }
+        if (priced.forged !== null) {
+          console.log(`  [price] IGNORED client packPrice=${priced.forged}; catalogue says ${priced.unitPrice} for the ${body.packSize}-pack`)
+        }
         cart.push({ id: `local-p-${Date.now()}`, kind: 'product', productId: body.productId,
           variantId: body.variantId ?? variant?.id ?? null, quantity: qty,
-          packType: body.packType ?? null, packSize: body.packSize ?? null, packPrice: body.packPrice ?? null,
+          packType: body.packType ?? null, packSize: body.packSize ?? null,
+          // Stored from the catalogue, never from the request.
+          packPrice: priced.source === 'catalogue.quantityDiscounts' ? priced.unitPrice : null,
+          unitPrice: priced.unitPrice,
           product, variant, groupBuyItem: null, saleItem: null, campaign: null })
       }
       console.log(`  [cart] POST -> ${cart.length} line(s)`)
@@ -707,7 +806,18 @@ const server = createServer(async (req, res) => {
       try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
       const line = cart.find((i) => i.id === id)
       if (line) {
-        const want = Number(body.quantity) || line.quantity
+        // Same rule on PUT: a whole number >= 1, else leave the line alone.
+        const rawWant = Number(body.quantity)
+        if (!Number.isFinite(rawWant) || !Number.isInteger(rawWant) || rawWant < 1 || rawWant > 10000) {
+          console.log(`  [cart] REFUSED PUT invalid quantity ${JSON.stringify(body.quantity)}`)
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({
+            error: 'Invalid quantity',
+            message: 'Quantity must be a whole number between 1 and 10000.',
+          }))
+          return
+        }
+        const want = rawWant
         // Same ceiling as POST. PUT sets the quantity outright, so it is THIS number
         // that must fit - not a delta.
         if (line.productId && want > 0) {

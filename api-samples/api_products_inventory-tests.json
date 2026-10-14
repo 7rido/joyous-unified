@@ -39,7 +39,26 @@
      "pricePerUnit": 25,
      "stockQty": 100,
      "saleDiscount": null,
-     "quantityDiscounts": [],
+     "quantityDiscounts": [
+      {
+       "id": "ffa25b31-28f7-562d-8a82-644f47b2d437",
+       "variantId": "d8b565c4-7823-5fec-9bc7-34295884de73",
+       "minQuantity": 5,
+       "packPrice": 112.5,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      },
+      {
+       "id": "d32b7e7e-6fc0-5ecb-b1a5-f0d58eb15f4a",
+       "variantId": "d8b565c4-7823-5fec-9bc7-34295884de73",
+       "minQuantity": 10,
+       "packPrice": 200.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
      "images": [
       {
        "url": "/uploads/products/JOY-CAP-0007-1769831706826.webp",
@@ -89,7 +108,26 @@
      "pricePerUnit": 30,
      "stockQty": 2,
      "saleDiscount": null,
-     "quantityDiscounts": [],
+     "quantityDiscounts": [
+      {
+       "id": "e796a2b6-242f-5eab-b643-bcc1d6d5bb11",
+       "variantId": "42618ab6-2710-5c3c-8c20-16f72eaad665",
+       "minQuantity": 5,
+       "packPrice": 135.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      },
+      {
+       "id": "7655b14f-9bee-50ce-bf2a-f82dda60f08e",
+       "variantId": "42618ab6-2710-5c3c-8c20-16f72eaad665",
+       "minQuantity": 10,
+       "packPrice": 240.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
      "images": [
       {
        "url": "/uploads/products/JOY-CAP-0014-1769835905549.webp",
@@ -139,7 +177,26 @@
      "pricePerUnit": 35,
      "stockQty": 0,
      "saleDiscount": null,
-     "quantityDiscounts": [],
+     "quantityDiscounts": [
+      {
+       "id": "e2947b7a-fa95-5683-84c6-75a3d8c5d2ce",
+       "variantId": "997ca856-0281-511c-aad0-149f02108403",
+       "minQuantity": 5,
+       "packPrice": 157.5,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      },
+      {
+       "id": "c892aa4c-59f1-59a7-805d-7f288629683b",
+       "variantId": "997ca856-0281-511c-aad0-149f02108403",
+       "minQuantity": 10,
+       "packPrice": 280.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
      "images": [
       {
        "url": "/uploads/products/JOY-NEU-0001-1771299901906.webp",
@@ -184,7 +241,26 @@
      "pricePerUnit": 40,
      "stockQty": "unlimited",
      "saleDiscount": null,
-     "quantityDiscounts": [],
+     "quantityDiscounts": [
+      {
+       "id": "fb9c404a-b6c5-56d2-aaf8-e2c57e8d8f8d",
+       "variantId": "0c8530ea-2077-58b7-b881-d0cb3924e200",
+       "minQuantity": 5,
+       "packPrice": 180.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      },
+      {
+       "id": "b58bac24-6d89-54c5-8964-e47f22b9eee6",
+       "variantId": "0c8530ea-2077-58b7-b881-d0cb3924e200",
+       "minQuantity": 10,
+       "packPrice": 320.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
      "images": [],
      "availableStock": "unlimited"
     }
@@ -229,7 +305,26 @@
      "pricePerUnit": 45,
      "stockQty": 10,
      "saleDiscount": null,
-     "quantityDiscounts": [],
+     "quantityDiscounts": [
+      {
+       "id": "fa70fe82-400e-5da5-8d24-677bf01c48b2",
+       "variantId": "a33bd12e-bacf-540a-b24b-0e7e71d8b730",
+       "minQuantity": 5,
+       "packPrice": 202.5,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      },
+      {
+       "id": "d3c98790-daa0-583c-a0d9-fda7ef84e058",
+       "variantId": "a33bd12e-bacf-540a-b24b-0e7e71d8b730",
+       "minQuantity": 10,
+       "packPrice": 360.0,
+       "saleDiscount": null,
+       "discountPercent": null,
+       "maxPerOrder": null
+      }
+     ],
      "images": [
       {
        "url": "/uploads/products/JYS-CAP-0003-1783285827840.webp",
