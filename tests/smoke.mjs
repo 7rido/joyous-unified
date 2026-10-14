@@ -700,6 +700,61 @@ const sales = await get('/api/admin/sales')
 check('the sales list is populated', (sales.body?.sales || []).length > 0,
   `${(sales.body?.sales || []).length} sale(s)`)
 
+/* ============================================================= PHASE 11 ==== */
+
+phase('11. Admin — the Today dashboard agrees with its lists')
+
+const dash = await get('/api/admin/dashboard/counts')
+const c = dash.body || {}
+// KEYS ARE THE COMPONENT'S. AdminHome renders `se.map(a => n[a.key])`, so a tile whose
+// key is missing prints 0 while the response looks fine.
+for (const key of ['ordersToShip', 'paymentsToday', 'needsReply', 'awaitingApproval', 'backInStock', 'salesToday']) {
+  check(`the dashboard exposes the "${key}" tile key`, key in c, `present=${key in c}`)
+}
+
+const allOrd = (await get('/api/admin/orders')).body.orders
+const awaitingOrd = (await get('/api/admin/orders?tab=awaiting')).body.orders
+const paidOrd = (await get('/api/admin/orders?status=paid')).body.orders
+const tixNow = (await get('/api/admin/support/tickets')).body.tickets
+const usersNow = (await get('/api/admin/users')).body.users
+
+// Every tile must equal the list it LINKS TO, not just a plausible number. A dashboard
+// that disagrees with its own destination is worse than an empty one.
+eq('ordersToShip equals what ?status=paid returns', c.ordersToShip, paidOrd.length)
+eq('awaitingPayment equals what ?tab=awaiting returns', c.awaitingPayment, awaitingOrd.length)
+eq('needsReply equals the open tickets awaiting an admin', c.needsReply,
+  tixNow.filter((t) => t.status === 'OPEN' && (t.messages || [{}]).at(-1)?.authorType === 'CUSTOMER').length)
+eq('awaitingApproval equals the unapproved members', c.awaitingApproval,
+  usersNow.filter((u) => !u.approved).length)
+check('salesToday is money, not a count', typeof c.salesToday === 'number' && c.salesToday >= 0, `$${c.salesToday}`)
+
+// The lists have to actually NARROW, or the tile opens the wrong page.
+check('?status=paid narrows the order list', paidOrd.length < allOrd.length,
+  `${allOrd.length} all vs ${paidOrd.length} paid`)
+check('?tab=awaiting narrows the order list', awaitingOrd.length < allOrd.length,
+  `${allOrd.length} all vs ${awaitingOrd.length} awaiting`)
+check('every order returned by ?status=paid is one to ship',
+  paidOrd.every((o) => o.status === 'PAYMENT_CONFIRMED'),
+  [...new Set(paidOrd.map((o) => o.status))].join(', '))
+check('every order returned by ?tab=awaiting is awaiting payment',
+  awaitingOrd.every((o) => o.status === 'AWAITING_PAYMENT_REVIEW'),
+  [...new Set(awaitingOrd.map((o) => o.status))].join(', '))
+
+// A confirmed order must move the counter, or the dashboard is a static shape.
+const before = (await get('/api/admin/dashboard/counts')).body
+const toShip = paidOrd[0]
+if (toShip) {
+  const enc2 = encodeURIComponent(toShip.orderNumber)
+  await post(`/api/admin/orders/${enc2}/ship`, {})
+  const after = (await get('/api/admin/dashboard/counts')).body
+  eq('shipping an order decrements ordersToShip', after.ordersToShip, before.ordersToShip - 1)
+  check('and the orders list agrees', (await get('/api/admin/orders?status=paid')).body.orders.length === after.ordersToShip)
+}
+
+const todayLine = await get('/api/admin/dashboard/today')
+check('the Today activity line resolves', typeof todayLine.body?.newOrders === 'number',
+  JSON.stringify(todayLine.body))
+
 /* ================================================================ summary == */
 
 const tally = results.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), {})

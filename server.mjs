@@ -1799,7 +1799,22 @@ const server = createServer({
       // The campaign rows are the RECORDED campaigns, statuses already in the
       // vocabulary the page switches on (CLOSED, SHIPPING_TO_CUSTOMERS, ...).
       if (pathname === '/api/admin/orders' && req.method === 'GET') {
-        const every = allOrders()
+        // The Today tiles link to /admin/orders?status=paid and ?tab=awaiting, and the
+        // orders page's own chips send more. Ignoring them meant a tile that counted 2
+        // opened a list of 12, so the number and the destination disagreed.
+        const oq = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const oStatus = oq.searchParams.get('status')
+        const oTab = oq.searchParams.get('tab')
+        const oSearch = (oq.searchParams.get('search') ?? '').toLowerCase()
+        let every = allOrders()
+        if (oStatus === 'paid') every = every.filter((o) => o.status === 'PAYMENT_CONFIRMED')
+        else if (oStatus === 'shipped') every = every.filter((o) => o.status === 'SHIPPED')
+        else if (oStatus === 'delivered') every = every.filter((o) => o.status === 'DELIVERED')
+        else if (oStatus && oStatus !== 'all') every = every.filter((o) => o.status === oStatus.toUpperCase())
+        if (oTab === 'awaiting') every = every.filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW')
+        else if (oTab === 'archive' || oTab === 'archived') every = every.filter((o) => o.archived === true)
+        else if (!oTab || oTab === 'active') every = every.filter((o) => o.archived !== true)
+        if (oSearch) every = every.filter((o) => `${o.orderNumber} ${o.customerName ?? ''} ${o.email ?? ''}`.toLowerCase().includes(oSearch))
         const withState = every.map((o) => ({
           ...o,
           // Derived, and MUST be present: the admin list reads it to show payment
@@ -1809,6 +1824,67 @@ const server = createServer({
         }))
         console.log(`  [admin] /admin/orders -> ${withState.length} order(s) (${seededOrders.length} seeded)`)
         sendJson(res, 200, { orders: withState, total: withState.length, page: 1, pages: 1 })
+        return
+      }
+
+      // --- the Today dashboard ----------------------------------------------
+      // DERIVED AT REQUEST TIME from the records the other screens read, so a number
+      // here always matches the list it links to. It was a static shape of zeros, so
+      // every tile read 0 no matter how many orders or tickets existed — and a
+      // dashboard that disagrees with its own lists is worse than an empty one.
+      //
+      // KEYS ARE THE COMPONENT'S, not the obvious names: AdminHome renders
+      // `se.map(a => n[a.key])` over its own list, so `todaysPayments` would be a key
+      // nothing looks up and the tile would silently print 0.
+      if (pathname === '/api/admin/dashboard/counts' && req.method === 'GET') {
+        const today = new Date().toISOString().slice(0, 10)
+        const isToday = (iso) => typeof iso === 'string' && iso.slice(0, 10) === today
+        const orders = allOrders()
+
+        const needsReplyCount = seededTickets.filter((t) => {
+          if (t.status !== 'OPEN') return false
+          const last = (t.messages ?? [])[t.messages.length - 1]
+          return last?.authorType === 'CUSTOMER'
+        }).length
+
+        const ship = orders.filter((o) => o.status === 'PAYMENT_CONFIRMED').length
+        const payments = orders.filter((o) => o.confirmed === true && isToday(o.placedAt)).length
+        const sales = orders
+          .filter((o) => o.confirmed === true && isToday(o.placedAt))
+          .reduce((n, o) => n + (Number(o.totalAmount ?? o.total) || 0), 0)
+        const awaiting = orders.filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW').length
+
+        const body = {
+          __derived: 'computed from the seeded orders, tickets and members; not recorded data',
+          ordersToShip: ship,
+          paymentsToday: payments,
+          needsReply: needsReplyCount,
+          awaitingApproval: seededCustomers.filter((u) => !u.approved).length,
+          backInStock: stockSubscriptions,
+          salesToday: Math.round(sales * 100) / 100,
+          awaitingPayment: awaiting,
+        }
+        console.log(`  [admin] dashboard/counts -> ship=${ship} pay=${payments} reply=${needsReplyCount} approve=${body.awaitingApproval} sales=$${body.salesToday}`)
+        sendJson(res, 200, body)
+        return
+      }
+
+      // The two activity lines under the Today tiles.
+      if (pathname === '/api/admin/dashboard/today' && req.method === 'GET') {
+        const today = new Date().toISOString().slice(0, 10)
+        const isToday = (iso) => typeof iso === 'string' && iso.slice(0, 10) === today
+        const orders = allOrders()
+        const byStatus = (s) => orders.filter((o) => o.status === s && isToday(o.placedAt)).length
+        const body = {
+          __derived: 'computed from the seeded orders',
+          delivered: byStatus('DELIVERED'),
+          shipped: orders.filter((o) => ['SHIPPED'].includes(o.status) && isToday(o.placedAt)).length,
+          newOrders: orders.filter((o) => isToday(o.placedAt)).length,
+          paymentsConfirmed: orders.filter((o) => o.confirmed === true && isToday(o.placedAt)).length,
+          awaitingPayment: orders.filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW').length,
+          ordersToShip: orders.filter((o) => o.status === 'PAYMENT_CONFIRMED').length,
+        }
+        sendJson(res, 200, body)
         return
       }
 
