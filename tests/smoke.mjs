@@ -83,20 +83,37 @@ function eq(name, actual, expected) {
 
 /* ---------------------------------------------------------------- helpers --- */
 
-async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  let json = null
-  const text = await res.text()
-  try { json = text ? JSON.parse(text) : null } catch { json = { raw: text.slice(0, 200) } }
-  return { status: res.status, body: json }
+/**
+ * One request, and it NEVER throws. A transport failure (ECONNRESET, socket hang up,
+ * a server that died mid-run) is reported as status 0 with the reason in the body, so
+ * a single bad connection fails ONE assertion instead of killing the whole suite.
+ * Before this, a reset mid-run took the process down with an uncaught fetch rejection
+ * and no summary was printed at all.
+ */
+async function api(path, { method = 'GET', body, token, headers = {}, timeoutMs = 20000 } = {}) {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const res = await fetch(BASE + path, {
+      method,
+      headers: {
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
+    })
+    const text = await res.text()
+    let json = null
+    try { json = text ? JSON.parse(text) : null } catch { json = { raw: text.slice(0, 200) } }
+    return { status: res.status, body: json }
+  } catch (e) {
+    const why = e?.name === 'AbortError' ? `timed out after ${timeoutMs}ms` : String(e?.cause?.code || e?.message || e)
+    return { status: 0, body: { error: 'transport failure', detail: why, path, method } }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const get = (p, o) => api(p, o)
@@ -505,6 +522,99 @@ if (probe.status !== 0) {
     if (m) record(m[1] === 'BLOCK' ? 'BLOCKED' : m[1], `[ui] ${m[2]}`, '')
   }
   if (ui.status !== 0 && !out) fail('browser journey', `ui script exited ${ui.status}: ${(ui.stderr || '').slice(0, 300)}`)
+}
+
+/* ============================================================== PHASE 9 ==== */
+
+phase('9. Admin — seeded fixtures and the button actions')
+
+// Without fixtures every admin screen renders its empty state, which makes "the
+// feature is missing" indistinguishable from "there is no data".
+const seededUsers = await get('/api/admin/users')
+check('the customer directory is populated', (seededUsers.body?.users || []).length > 1,
+  `${(seededUsers.body?.users || []).length} account(s)`)
+check('some members are awaiting approval', (seededUsers.body?.counts?.pending || 0) > 0,
+  `pending=${seededUsers.body?.counts?.pending}`)
+check('elite members exist for the tier boundary', (seededUsers.body?.counts?.elite || 0) > 0,
+  `elite=${seededUsers.body?.counts?.elite}`)
+
+const seededTix = await get('/api/admin/support/tickets?page=1&limit=25')
+check('tickets come back as {tickets, hasMore}, not a bare array',
+  Array.isArray(seededTix.body?.tickets) && 'hasMore' in (seededTix.body || {}),
+  `keys: ${Object.keys(seededTix.body || {}).join(', ')}`)
+const tixCounts = await get('/api/admin/support/tickets/counts')
+check('the support header counts resolve', typeof tixCounts.body?.needsReply === 'number',
+  JSON.stringify(tixCounts.body))
+const awaitingOnly = await get('/api/admin/support/tickets?page=1&limit=25&awaiting=ADMIN')
+check('the awaiting filter narrows server-side',
+  (awaitingOnly.body?.tickets || []).every((t) => t.status === 'OPEN'),
+  `${(awaitingOnly.body?.tickets || []).length} awaiting`)
+
+const seededOrd = await get('/api/admin/orders')
+const statuses = new Set((seededOrd.body?.orders || []).map((o) => o.status))
+check('orders span several states', statuses.size >= 4, [...statuses].join(', '))
+check('shipped orders carry tracking',
+  (seededOrd.body?.orders || []).some((o) => o.tracking?.number),
+  `${(seededOrd.body?.orders || []).filter((o) => o.tracking?.number).length} with tracking`)
+
+// --- the product buttons --------------------------------------------------
+const seededProds = (await get('/api/admin/products')).body.products.filter((x) => x.__seed === true)
+check('stocked products exist to act on', seededProds.length > 0, `${seededProds.length} seeded`)
+const target = seededProds[0]
+const ids = [target.id]
+
+const arch = await post('/api/admin/products/bulk-archive', { productIds: ids, archived: true })
+check('ARCHIVE reports what it changed', arch.body?.updated === 1, JSON.stringify(arch.body))
+check('archive PERSISTS in the admin list',
+  (await get('/api/admin/products')).body.products.find((x) => x.id === target.id)?.archived === true)
+await post('/api/admin/products/bulk-archive', { productIds: ids, archived: false })
+check('RESTORE clears it',
+  (await get('/api/admin/products')).body.products.find((x) => x.id === target.id)?.archived === false)
+
+const vis = await api(`/api/admin/products/${target.id}`, { method: 'PATCH', body: { isVisible: false } })
+check('the row SHOW/HIDE toggle round-trips', vis.body?.product?.isVisible === false,
+  `isVisible=${vis.body?.product?.isVisible}`)
+check('a hidden product leaves the public catalogue',
+  !(await get('/api/products/catalog')).body.products.some((x) => x.id === target.id))
+await api(`/api/admin/products/${target.id}`, { method: 'PATCH', body: { isVisible: true } })
+
+const badge = await post('/api/admin/products/bulk-new-badge', { productIds: ids, isNew: true })
+check('MARK AS NEW reports what it changed', badge.body?.updated === 1, JSON.stringify(badge.body))
+check('the NEW badge persists',
+  (await get('/api/admin/products')).body.products.find((x) => x.id === target.id)?.isNew === true)
+
+const spotlight = await post('/api/admin/spotlight/mark-recent-as-new', {})
+check('the spotlight variant also works', spotlight.body?.updated > 0, JSON.stringify(spotlight.body))
+
+const cat = (await get('/api/admin/categories')).body.categories[0]
+const moved = await post('/api/admin/products/bulk-category', { productIds: ids, categoryId: cat.id })
+check('MOVE TO CATEGORY reports updated/requested',
+  moved.body?.updated === 1 && moved.body?.requested === 1, JSON.stringify(moved.body))
+
+// --- membership approval --------------------------------------------------
+const pending = seededUsers.body.users.find((u) => !u.approved)
+if (pending) {
+  const ok = await api(`/api/admin/users/${pending.id}`, { method: 'PATCH', body: { approved: true, tier: 'VIP' } })
+  check('a member can be approved and re-tiered',
+    ok.body?.user?.approved === true && ok.body?.user?.tier === 'VIP',
+    `approved=${ok.body?.user?.approved} tier=${ok.body?.user?.tier}`)
+  const bad = await api(`/api/admin/users/${pending.id}`, { method: 'PATCH', body: { tier: 'GOLD' } })
+  check('an unknown tier is refused', bad.status === 422, `HTTP ${bad.status}`)
+}
+
+// --- order lifecycle ------------------------------------------------------
+const fresh = seededOrd.body.orders.find((o) => o.status === 'PAYMENT_CONFIRMED')
+if (fresh) {
+  const enc = encodeURIComponent(fresh.orderNumber)
+  const ship = await post(`/api/admin/orders/${enc}/ship`, {})
+  check('SHIP moves a confirmed order', ship.body?.order?.status === 'SHIPPED', JSON.stringify(ship.body?.order))
+  const again = await post(`/api/admin/orders/${enc}/ship`, {})
+  check('an invalid transition is refused with a reason',
+    again.status === 409 && !!again.body?.message, `HTTP ${again.status} ${again.body?.message || ''}`)
+  const conf = await post(`/api/admin/orders/${enc}/confirm-payment`, {})
+  check('confirming an already-confirmed order is a no-op, not an error',
+    conf.status === 409 || conf.body?.alreadyConfirmed === true || conf.status === 200,
+    `HTTP ${conf.status}`)
 }
 
 /* ================================================================ summary == */

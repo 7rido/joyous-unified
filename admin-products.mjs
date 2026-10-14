@@ -125,9 +125,14 @@ export function validateProduct(input, { partial = false, existing = null, taken
 
   // ---- availability: an ADMIN decision, distinct from sold out ---------
   // Disabled hides the product; sold out keeps it visible with a Notify-me button.
+  // `isVisible` is the name the products table's own toggle sends, and `isNew` the
+  // NEW badge — both arrive via PATCH /api/admin/products/:id, which is keyed on the
+  // product ID. Ignoring them meant the row toggle reported success and reverted.
+  if (has('isVisible')) value.adminHidden = input.isVisible === false
   if (has('disabled') || has('adminHidden')) {
     value.adminHidden = !!(input.disabled ?? input.adminHidden)
   }
+  if (has('isNew')) value.isNew = !!input.isNew
 
   // ---- first variant name ----------------------------------------------
   if (has('variantName')) {

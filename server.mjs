@@ -23,6 +23,10 @@ import { findPromo, discountFor, PROMO_CODES } from './promo-codes.mjs'
 import {
   validateProduct, applyProductOverlay, saveProductOverlay, stockFor, TIERS, STOCK_MODES,
 } from './admin-products.mjs'
+import {
+  seedCustomers, seedOrders, seedTickets, seedStockedProducts,
+  applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
+} from './admin-seed.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -41,6 +45,27 @@ const SAMPLES = join(HERE, 'api-samples')
  * silently never applied - so a hand-edited pack-deals.json was ignored entirely.
  */
 const PACK_DEALS_FILE = join(HERE, 'pack-deals.json')
+
+/**
+ * Seeded admin fixtures: customers, historical orders, support tickets and stocked
+ * products. Without them every admin screen renders its empty state, which makes
+ * "the feature is missing" indistinguishable from "there is no data". All fabricated,
+ * all marked __seed.
+ *
+ * Declared HERE, with the other boot-time constants, because `const` hoists without
+ * initialising: defining them further down threw "Cannot access 'SEED_FIXTURES'
+ * before initialization" at the first use and the server would not start.
+ *
+ * SEED_ADMIN_FIXTURES=0 turns them off, for a run that wants only real records.
+ */
+const SEED_FIXTURES = process.env.SEED_ADMIN_FIXTURES !== '0'
+const seededCustomers = SEED_FIXTURES ? seedCustomers() : []
+const seededTickets = SEED_FIXTURES ? seedTickets() : []
+/** Historical orders, kept SEPARATE from locally placed ones so a test can always
+ *  tell which is which. */
+const seededOrders = SEED_FIXTURES ? seedOrders() : []
+/** Every order the admin sees: seeded fixtures plus anything placed this session. */
+const allOrders = () => [...orders, ...seededOrders]
 
 /**
  * Admin-authored products and edits. Separate from the catalogue fixture on purpose:
@@ -107,6 +132,15 @@ try {
   catalogProducts = catalogProducts.concat(inventoryTests)
   console.log(`  seeded ${inventoryTests.length} inventory test products`)
 } catch { /* suite not generated */ }
+
+// Stocked product fixtures, then the authored overlay on top so an admin edit always
+// wins over the seed.
+if (SEED_FIXTURES) {
+  for (const prod of seedStockedProducts()) {
+    if (!catalogProducts.some((x) => x.slug === prod.slug)) catalogProducts.push(prod)
+  }
+  console.log(`  seeded ${seededCustomers.length} customers, ${seededOrders.length} orders, ${seededTickets.length} tickets, 8 stocked products`)
+}
 
 // The authored product overlay is applied AFTER every catalogue source, so an admin
 // edit wins, and re-validated on load so hand-editing the file is not a bypass.
@@ -454,6 +488,9 @@ function buildSeedCart() {
 /** Orders placed locally through the checkout flow. In memory only. */
 const orders = []
 
+
+
+
 /**
  * Idempotency keys -> order number. DURABLE, unlike orders.
  *
@@ -623,7 +660,13 @@ function communityPlaceholder(host, pathname, code) {
 </main></body></html>`
 }
 
-const server = createServer(async (req, res) => {
+const server = createServer({
+  // Generous timeouts: a smoke run drives a browser and a dozen API calls at once, and
+  // the default 5s keep-alive/headers budget produced ECONNRESET on this machine.
+  keepAliveTimeout: 65000,
+  headersTimeout: 70000,
+  requestTimeout: 120000,
+}, async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
   const pathname = decodeURIComponent(url.pathname)
   const host = (req.headers.host ?? '').split(':')[0]
@@ -1497,6 +1540,101 @@ const server = createServer(async (req, res) => {
         return
       }
 
+      // --- the products page's own buttons ----------------------------------
+      // Archive / Restore, Show / Hide, the NEW badge, and Move-to-category. All four
+      // POST { productIds, ... } and toast from `{ updated, requested }`. They answered
+      // the generic empty-shape fallback before, so the buttons reported success and
+      // changed nothing.
+      if (pathname === '/api/admin/products/bulk-archive' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const res1 = applyBulk(catalogProducts, 'archive', body.productIds ?? body.ids, body.archived !== false)
+        console.log(`  [admin] bulk-archive ${res1.updated}/${res1.requested} -> archived=${body.archived !== false}`)
+        sendJson(res, 200, res1)
+        return
+      }
+      if (pathname === '/api/admin/products/bulk-visibility' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const res2 = applyBulk(catalogProducts, 'visibility', body.productIds ?? body.ids, body.isVisible !== false)
+        console.log(`  [admin] bulk-visibility ${res2.updated}/${res2.requested} -> visible=${body.isVisible !== false}`)
+        sendJson(res, 200, res2)
+        return
+      }
+      if (pathname === '/api/admin/products/bulk-new-badge' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const res3 = applyBulk(catalogProducts, 'new-badge', body.productIds ?? body.ids, body.isNew !== false)
+        console.log(`  [admin] bulk-new-badge ${res3.updated}/${res3.requested} -> isNew=${body.isNew !== false}`)
+        sendJson(res, 200, res3)
+        return
+      }
+      if (pathname === '/api/admin/products/bulk-category' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const cat = adminCategories().find((c) => c.id === body.categoryId)
+        if (!cat) { sendJson(res, 422, { error: `No such category: ${body.categoryId}` }); return }
+        const ids = new Set(body.productIds ?? body.ids ?? [])
+        const matched = catalogProducts.filter((x) => ids.has(x.id) || ids.has(x.slug))
+        for (const prod of matched) prod.category = { id: cat.id, name: cat.name, slug: cat.slug, code: prod.category?.code ?? 'AUTHORED' }
+        console.log(`  [admin] bulk-category ${matched.length}/${ids.size} -> ${cat.name}`)
+        sendJson(res, 200, { updated: matched.length, requested: ids.size, category: cat })
+        return
+      }
+      // Per-product archive toggle used by the row's own menu.
+      const archiveMatch = new RegExp('^/api/admin/products/([^/]+)/archive$').exec(pathname)
+      if (archiveMatch && (req.method === 'PATCH' || req.method === 'PUT' || req.method === 'POST')) {
+        const slug = decodeURIComponent(archiveMatch[1])
+        const prod = catalogProducts.find((x) => x.slug === slug || x.id === slug)
+        if (!prod) { sendJson(res, 404, { error: 'No such product.', slug }); return }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        prod.archived = body.archived !== false
+        console.log(`  [admin] ${slug} archived=${prod.archived}`)
+        sendJson(res, 200, { ok: true, updated: 1, product: prod })
+        return
+      }
+      // Spotlight's "mark recent as NEW" — the same badge write, from the other screen.
+      if (pathname === '/api/admin/spotlight/mark-recent-as-new' && req.method === 'POST') {
+        const recent = catalogProducts.slice(-8)
+        for (const prod of recent) prod.isNew = true
+        console.log(`  [admin] mark-recent-as-new -> ${recent.length} product(s)`)
+        sendJson(res, 200, { ok: true, updated: recent.length })
+        return
+      }
+
+      // --- order status transitions -----------------------------------------
+      const orderActionMatch = new RegExp('^/api/admin/orders/([^/]+)/(confirm-payment|ship|deliver|archive|restore)$').exec(pathname)
+      if (orderActionMatch && req.method === 'POST') {
+        const ref = decodeURIComponent(orderActionMatch[1])
+        const action = orderActionMatch[2] === 'confirm-payment' ? 'confirmPayment' : orderActionMatch[2]
+        const order = allOrders().find((o) => o.orderNumber === ref || o.number === ref || o.id === ref)
+        if (!order) { sendJson(res, 404, { error: 'No such order.', ref }); return }
+        // Confirming an already-confirmed order is a no-op, not an error: a retry, a
+        // double click, or a second admin must all be safe. Only the OTHER transitions
+        // are genuinely order-dependent.
+        if (action === 'confirmPayment' && order.confirmed === true) {
+          console.log(`  [admin] ${order.orderNumber}: already confirmed (no-op)`)
+          sendJson(res, 200, { ok: true, alreadyConfirmed: true, order: { number: order.orderNumber, status: order.status, confirmed: true } })
+          return
+        }
+        const result = applyOrderTransition(order, action)
+        if (!result.ok) {
+          console.log(`  [admin] ${action} REFUSED for ${order.orderNumber}: ${result.error}`)
+          sendJson(res, 409, { error: 'Invalid transition', message: result.error, status: order.status, allowed: ORDER_TRANSITIONS[action]?.from })
+          return
+        }
+        console.log(`  [admin] ${order.orderNumber}: ${action} -> ${order.status}`)
+        sendJson(res, 200, { ok: true, order: { number: order.orderNumber, status: order.status, confirmed: order.confirmed } })
+        return
+      }
+      // What transitions are available for a given order — so a UI can disable buttons
+      // rather than offer an action the server will refuse.
+      if (pathname.startsWith('/api/admin/order-transitions') && req.method === 'GET') {
+        sendJson(res, 200, { transitions: ORDER_TRANSITIONS })
+        return
+      }
+
       const patchMatch = new RegExp('^/api/admin/products/([^/]+)$').exec(pathname)
 
       // DELETE disables rather than destroys. A hard delete would orphan product_images
@@ -1519,12 +1657,15 @@ const server = createServer(async (req, res) => {
       }
 
       if (patchMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
-        const slug = decodeURIComponent(patchMatch[1])
-        const prod = catalogProducts.find((x) => x.slug === slug)
+        // Keyed on the product ID by the table's own row actions, and on slug by the
+        // editor. Both must resolve or the toggle silently 404s.
+        const ref = decodeURIComponent(patchMatch[1])
+        const prod = catalogProducts.find((x) => x.slug === ref || x.id === ref)
         if (!prod) {
-          sendJson(res, 404, { error: 'No such product.', slug })
+          sendJson(res, 404, { error: 'No such product.', ref })
           return
         }
+        const slug = prod.slug
         let body = {}
         try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
         const val = validateProduct(body, { partial: true, existing: prod })
@@ -1556,7 +1697,18 @@ const server = createServer(async (req, res) => {
         authoredPatches[slug] = { ...(authoredPatches[slug] || {}), ...patch }
         saveProductOverlay(PRODUCTS_FILE, { catalogProducts, authoredSlugs, authoredPatches })
         console.log(`  [admin] patched ${slug}: ${Object.keys(patch).join(', ')}`)
-        sendJson(res, 200, { ok: true, product: prod, applied: patch })
+        // Return the ADMIN shape (isVisible/archived/isNew), not the raw catalogue
+        // object, so a caller sees the same field names it just sent.
+        sendJson(res, 200, {
+          ok: true, applied: patch,
+          product: {
+            ...prod,
+            isVisible: prod.adminHidden !== true,
+            archived: prod.archived === true,
+            isNew: prod.isNew === true,
+            stockMode: prod.stockMode ?? 'FLAG',
+          },
+        })
         return
       }
 
@@ -1585,8 +1737,14 @@ const server = createServer(async (req, res) => {
               stockQty: wireStock(v.stockQty),
               availableStock: wireStock(v.availableStock ?? v.stockQty),
             })),
-            isVisible: true,
-            archived: false,
+            // Reflect the REAL state, not a constant. These were hardcoded, so the
+            // archive / hide buttons wrote their flags and the admin list then threw
+            // them away — the button reported success and the row never changed.
+            isVisible: p.adminHidden !== true,
+            archived: p.archived === true,
+            isNew: p.isNew === true,
+            stockMode: p.stockMode ?? 'FLAG',
+            adminHidden: p.adminHidden === true,
             categoryName: p.category?.name ?? p.category ?? null,
           }
         }
@@ -1617,16 +1775,17 @@ const server = createServer(async (req, res) => {
       // and reads  i[a.listKey] || []  and  i.statsAll || i.stats.
       // The campaign rows are the RECORDED campaigns, statuses already in the
       // vocabulary the page switches on (CLOSED, SHIPPING_TO_CUSTOMERS, ...).
-      if (pathname === '/api/admin/orders' && req.method === 'GET' && orders.length) {
-        console.log(`  [admin] /admin/orders -> ${orders.length} locally placed order(s)`)
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-        // `confirmed` is derived from the order status and MUST be present: the admin
-        // order list reads it to show payment state, and confirm-payment writes it.
-        // It was absent, so a confirmation succeeded and then vanished on reload.
-        res.end(JSON.stringify({
-          orders: orders.map((o) => ({ ...o, confirmed: o.status !== 'AWAITING_PAYMENT_REVIEW' })),
-          total: orders.length, page: 1, pages: 1,
+      if (pathname === '/api/admin/orders' && req.method === 'GET') {
+        const every = allOrders()
+        const withState = every.map((o) => ({
+          ...o,
+          // Derived, and MUST be present: the admin list reads it to show payment
+          // state, and confirm-payment writes it. It was absent, so a confirmation
+          // succeeded and then vanished on reload.
+          confirmed: o.confirmed === true || !['AWAITING_PAYMENT_REVIEW', 'PAYMENT_UNDER_REVIEW'].includes(o.status),
         }))
+        console.log(`  [admin] /admin/orders -> ${withState.length} order(s) (${seededOrders.length} seeded)`)
+        sendJson(res, 200, { orders: withState, total: withState.length, page: 1, pages: 1 })
         return
       }
 
@@ -1756,6 +1915,27 @@ const server = createServer(async (req, res) => {
         }
       }
 
+      // Approval: the one mutation the Customers directory offers. Tier is changed the
+      // same way, because "approve and upgrade" is one decision in practice.
+      const userMatch = new RegExp('^/api/admin/users/([^/]+)$').exec(pathname)
+      if (userMatch && (req.method === 'PATCH' || req.method === 'PUT' || req.method === 'POST')) {
+        const ref = decodeURIComponent(userMatch[1])
+        const target = seededCustomers.find((x) => x.id === ref || x.email === ref)
+        if (!target) { sendJson(res, 404, { error: 'No such member.', ref }); return }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const before = { approved: target.approved, tier: target.tier }
+        if (body.approved !== undefined) target.approved = !!body.approved
+        if (body.tier) {
+          const tier = String(body.tier).toUpperCase()
+          if (!TIERS.includes(tier)) { sendJson(res, 422, { error: `tier must be one of ${TIERS.join(', ')}` }); return }
+          target.tier = tier
+        }
+        console.log(`  [admin] member ${target.email}: ${JSON.stringify(before)} -> approved=${target.approved} tier=${target.tier}`)
+        sendJson(res, 200, { ok: true, user: target })
+        return
+      }
+
       // Rendered order emails, so the payload can be looked at without a terminal.
       //   GET /api/admin/outbox          -> the history, with subjects and links
       //   GET /api/admin/outbox/<n>      -> message n's HTML, served inline
@@ -1788,19 +1968,100 @@ const server = createServer(async (req, res) => {
         return
       }
 
+      // Support tickets: one of each issue type, so the filters have something to filter.
+      // `needsReply` is the one the header counts: a ticket whose LAST message is from
+      // the customer is waiting on an admin, which is exactly how the page computes it.
+      const needsReply = (t) => {
+        if (t.status !== 'OPEN') return false
+        const last = (t.messages ?? [])[t.messages.length - 1]
+        return last?.authorType === 'CUSTOMER'
+      }
+      if ((pathname === '/api/admin/support/tickets/counts' || pathname === '/api/admin/tickets/counts') && req.method === 'GET') {
+        sendJson(res, 200, {
+          needsReply: seededTickets.filter(needsReply).length,
+          openOrderIssues: seededTickets.filter((t) => t.status === 'OPEN' && t.category === 'ORDER_ISSUE').length,
+          open: seededTickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status)).length,
+          urgent: seededTickets.filter((t) => t.priority === 'URGENT').length,
+          high: seededTickets.filter((t) => t.priority === 'HIGH').length,
+          awaiting: seededTickets.filter((t) => t.status === 'WAITING_ON_CUSTOMER').length,
+          resolved: seededTickets.filter((t) => t.status === 'RESOLVED').length,
+        })
+        return
+      }
+      if ((pathname === '/api/admin/tickets' || pathname === '/api/admin/support/tickets') && req.method === 'GET') {
+        // `{ tickets, hasMore }`, NOT a bare array: the page reads `m.tickets || []`
+        // and keys pagination off `m.hasMore`. A bare array gave it `undefined || []`
+        // and the inbox rendered empty while the header counted correctly.
+        // The query narrows server-side, the way the real route does, because the page
+        // passes `awaiting`/`status`/`search`/`category` as params.
+        const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const awaiting = url.searchParams.get('awaiting')
+        const status = url.searchParams.get('status')
+        const category = url.searchParams.get('category')
+        const search = (url.searchParams.get('search') ?? '').toLowerCase()
+        const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
+        const limit = Math.max(1, Number(url.searchParams.get('limit')) || 25)
+        let list = seededTickets
+        if (awaiting === 'ADMIN') list = list.filter(needsReply)
+        else if (awaiting === 'CUSTOMER') list = list.filter((t) => t.status === 'OPEN' && (t.messages ?? []).at(-1)?.authorType === 'ADMIN')
+        if (status && status !== 'all') list = list.filter((t) => t.status === status)
+        if (category) list = list.filter((t) => t.category === category)
+        if (search) list = list.filter((t) => `${t.subject} ${t.customer} ${t.customerName ?? ''}`.toLowerCase().includes(search))
+        const start = (page - 1) * limit
+        const slice = list.slice(start, start + limit)
+        console.log(`  [admin] support tickets -> ${slice.length}/${list.length} (awaiting=${awaiting ?? '-'} status=${status ?? '-'})`)
+        sendJson(res, 200, { tickets: slice, hasMore: start + limit < list.length, total: list.length, page })
+        return
+      }
+      const ticketMatch = new RegExp('^/api/admin/(?:support/)?tickets/(?!counts$)([^/]+)$').exec(pathname)
+      if (ticketMatch && req.method === 'GET') {
+        const t = seededTickets.find((x) => x.id === decodeURIComponent(ticketMatch[1]))
+        if (!t) { sendJson(res, 404, { error: 'No such ticket.' }); return }
+        sendJson(res, 200, { ticket: t })
+        return
+      }
+      if (ticketMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
+        const t = seededTickets.find((x) => x.id === decodeURIComponent(ticketMatch[1]))
+        if (!t) { sendJson(res, 404, { error: 'No such ticket.' }); return }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const before = t.status
+        if (body.status) t.status = String(body.status).toUpperCase()
+        if (body.priority) t.priority = String(body.priority).toUpperCase()
+        if (body.resolution) t.resolution = String(body.resolution).toUpperCase()
+        t.updatedAt = new Date().toISOString()
+        if (body.message) t.messages.push({ author: 'support', body: String(body.message), at: t.updatedAt })
+        console.log(`  [admin] ticket ${t.id}: ${before} -> ${t.status}`)
+        sendJson(res, 200, { ok: true, ticket: t })
+        return
+      }
+
+      // The directory: seeded customers plus the recorded account.
       if (pathname === '/api/admin/users' && req.method === 'GET') {
         // The only account the recording contains - already sanitised, so no real
         // details are involved. Served so the directory is not empty and the seeded
         // admin appears as a row.
+        const seeded = seededCustomers
         const u = JSON.parse(await readFile(join(SAMPLES, 'api_auth_me.json'), 'utf8')).user
         let addr = null
         try {
           addr = (JSON.parse(await readFile(join(SAMPLES, 'api_users_addresses.json'), 'utf8')).addresses ?? [])[0] ?? null
         } catch { /* none */ }
         const row = { ...u, address: addr, addresses: addr ? [addr] : [] }
-        console.log('  [admin] /admin/users -> 1 account (recorded, sanitised)')
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-        res.end(JSON.stringify({ users: [row], total: 1, page: 1, pages: 1 }))
+        const everyone = [row, ...seeded]
+        console.log(`  [admin] /admin/users -> ${everyone.length} account(s) (${seeded.length} seeded, ${seeded.filter((x) => !x.approved).length} awaiting approval)`)
+        sendJson(res, 200, {
+          users: everyone,
+          total: everyone.length,
+          page: 1,
+          pages: 1,
+          counts: {
+            total: everyone.length,
+            pending: everyone.filter((x) => !x.approved).length,
+            elite: everyone.filter((x) => x.tier === 'ELITE').length,
+            vip: everyone.filter((x) => x.tier === 'VIP').length,
+          },
+        })
         return
       }
 
