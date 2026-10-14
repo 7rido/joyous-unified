@@ -180,6 +180,21 @@ const server = createServer(async (req, res) => {
   const pathname = decodeURIComponent(url.pathname)
   if (VERBOSE) console.log(`  <- ${req.method} ${pathname}`)
 
+  // --- promo codes -------------------------------------------------------
+  // Returning {} with a 200 for a promo code is a lie the client cannot act on: the
+  // request "succeeds" and there is no valid discount in the body. The client reads
+  // t.discount.code, throws, and shows a generic failure. A real API rejects an
+  // unknown code with a 4xx and a message, so this does the same - the recorded
+  // samples contain no promo, so every code is genuinely invalid here.
+  if (pathname === '/api/checkout/validate-promo' && req.method === 'POST') {
+    let body = {}
+    try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+    console.log(`  [checkout] validate-promo "${body.code ?? ''}" -> 400 (no promo recorded)`)
+    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ error: 'That code didn\'t work.' }))
+    return
+  }
+
   // --- checkout validation ----------------------------------------------
   // POST /checkout/validate-cart replies with the price breakdown the order summary
   // renders. The field names below are the destructured props of that component:
@@ -448,9 +463,25 @@ const server = createServer(async (req, res) => {
     // failure mode is invisible otherwise: the client destructures a field off the
     // empty object, throws, and renders a blank page that still looks like it
     // loaded. That is exactly how the empty product detail pages hid.
-    console.warn(`  [api] NOT RECORDED: ${req.method} ${pathname} -> {}`)
-    console.warn('        an empty body here makes the client throw and render a blank page')
+    // A 200 with {} is the worst possible answer: the client treats the request as
+    // successful, then reads a field off an empty object and dies somewhere far from
+    // the cause. That is how the product detail pages and checkout both broke.
+    //
+    // GETs still get {} and a 200, because for a read the client's own `|| []` guards
+    // cope and pages render. WRITES get a 501 instead: a mutation that silently
+    // appears to succeed is worse than one that visibly fails.
     notRecorded.add(`${req.method} ${pathname}`)
+    const isWrite = req.method !== 'GET' && req.method !== 'HEAD'
+    console.warn(`  [api] NOT RECORDED: ${req.method} ${pathname} -> ${isWrite ? '501' : '200 {}'}`)
+    if (isWrite) {
+      res.writeHead(501, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({
+        error: 'Not implemented in this replay',
+        detail: `${req.method} ${pathname} was never recorded.`,
+      }))
+      return
+    }
+    console.warn('        an empty body here makes the client throw and render a blank page')
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end('{}')
     return
