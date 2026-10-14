@@ -350,3 +350,81 @@ export function wireOrderMilestones({ outDir, history = [] }) {
   })
   return orderEvents
 }
+
+/* ------------------------------------------------------------- newsletter -- */
+
+/**
+ * Render a newsletter into the same table-based shell the order emails use.
+ *
+ * The compose screen gives raw HTML, so it is embedded as-is inside the shell rather
+ * than escaped — escaping it would print the markup as text, which is what a preview
+ * is supposed to avoid. The SUBJECT is escaped, because that one is plain text.
+ *
+ * With no body content this still produces a valid, readable email rather than an
+ * empty file, so "preview" on a blank compose screen shows the shell you would send.
+ */
+export function renderNewsletter({ subject = 'Newsletter', htmlContent = '', preheader = '' } = {}) {
+  const inner = String(htmlContent ?? '').trim()
+  const body = `
+      <tr><td style="padding:8px 28px 4px;">
+        ${inner || `<p style="margin:0;font-size:14px;line-height:1.6;color:${BRAND.ink};">
+          This newsletter has no content yet. Add some on the compose screen and preview again.
+        </p>`}
+      </td></tr>`
+  return emailShell({
+    preheader: preheader || subject,
+    accent: BRAND.sun,
+    heading: subject,
+    body,
+    footerNote: 'You are receiving this because you subscribed to Joyous updates. Unsubscribe any time from your account.',
+  })
+}
+
+/**
+ * Write a rendered newsletter to the outbox and record it in the same history the
+ * order emails use, so /api/admin/outbox lists it beside them.
+ *
+ * `recipients` is recorded on the message but NOT written into the file: one rendered
+ * message is stored per send, not one per recipient, because a 12-person send should
+ * not leave 12 identical files behind.
+ */
+export function writeNewsletterToOutbox({ subject, htmlContent, preheader, recipients = [], audienceTier = 'USER', test = false, outDir }) {
+  const dir = outboxDir(outDir)
+  const html = renderNewsletter({ subject, htmlContent, preheader })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const kind = test ? 'newsletter-test' : 'newsletter'
+  const file = join(dir, `${stamp}.${kind}.html`)
+  writeFileSync(file, html)
+  const message = {
+    to: recipients.length ? recipients.join(', ') : '(no recipients)',
+    subject,
+    kind,
+    html,
+    file,
+    recipients,
+    audienceTier,
+    at: new Date().toISOString(),
+  }
+  const entry = {
+    event: test ? 'newsletter.test' : 'newsletter.sent',
+    at: message.at,
+    messages: [message],
+  }
+  outboxHistory.push(entry)
+
+  console.log('')
+  console.log('  ┌─ NEWSLETTER ─────────────────────────────────────────────────────')
+  console.log(`  │ ${test ? 'TEST ' : ''}subject  ${subject}`)
+  console.log(`  │ audience ${audienceTier}   recipients ${recipients.length}`)
+  console.log(`  │ html     ${html.length} bytes -> ${file}`)
+  console.log('  │ rendered, NOT sent')
+  console.log('  └──────────────────────────────────────────────────────────────────')
+  console.log('')
+  return { file, html, message }
+}
+
+/**
+ * Sends recorded here, newest first. Kept separate from the order bus so the outbox
+ * route can list both without one overwriting the other's history shape.
+ */
+export const outboxHistory = []

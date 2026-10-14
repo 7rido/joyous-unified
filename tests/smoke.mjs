@@ -184,7 +184,7 @@ const del = (p, o = {}) => api(p, { ...o, method: 'DELETE' })
 const PHASES = [
   'environment', 'catalog', 'cart', 'guards', 'checkout', 'admin orders',
   'ui browser', 'product CRUD', 'admin fixtures', 'campaigns', 'dashboard',
-  'fallback pages', 'insights', 'storefront', 'discounts',
+  'fallback pages', 'insights', 'storefront', 'discounts', 'newsletter',
 ]
 const ranPhases = []
 
@@ -1237,6 +1237,152 @@ const evilPromo = promoMod.validatePromo({ code: 'EVIL', percentOff: 500 })
 check('the loader refuses a 500% discount from a hand-edited file', evilPromo.ok === false, evilPromo.errors.join('; '))
 const both = promoMod.validatePromo({ code: 'EVIL', percentOff: 10, amountOff: 5 })
 check('a code cannot be both a percentage and a fixed amount', both.ok === false, both.errors.join('; '))
+
+/* ============================================================= newsletter ==== */
+
+phase('newsletter', 'Newsletter — fixtures labelled, sending real')
+
+// The page reads stats.{active,eligible,inactive,suppressed,byTier}. Missing numbers
+// render 0 rather than throwing, which is exactly why a wrong shape looks like an empty
+// list instead of a bug.
+const nstats = await get('/api/admin/newsletter/stats')
+const st = nstats.body || {}
+check('stats carries every key the shell reads',
+  ['active', 'eligible', 'inactive', 'suppressed'].every((k) => typeof st[k] === 'number'),
+  `active=${st.active} eligible=${st.eligible} inactive=${st.inactive} suppressed=${st.suppressed}`)
+check('byTier covers USER/VIP/ELITE with eligible AND offTier',
+  ['USER', 'VIP', 'ELITE'].every((t) => typeof st.byTier?.[t]?.eligible === 'number' && typeof st.byTier?.[t]?.offTier === 'number'),
+  JSON.stringify(st.byTier))
+// The compose footer promises these numbers, so they have to be the count a send
+// actually reaches — asserted below against a real send.
+eq('byTier.USER.eligible is the everyone-reachable count', st.byTier?.USER?.eligible, st.eligible)
+
+// `{subscribers, total, totalPages}` — the component's own catch default names all three.
+const subs = await get('/api/admin/newsletter/subscribers?page=1&limit=25')
+const srows = subs.body?.subscribers || []
+check('subscribers return {subscribers, total, totalPages}',
+  Array.isArray(srows) && typeof subs.body?.total === 'number' && typeof subs.body?.totalPages === 'number',
+  `keys: ${Object.keys(subs.body || {}).join(', ')}`)
+check('each row carries the fields the table reads',
+  srows.every((x) => x.id != null && x.email && typeof x.active === 'boolean'
+    && typeof x.suppressed === 'boolean' && x.source && x.createdAt),
+  `keys: ${Object.keys(srows[0] || {}).join(', ')}`)
+// The "Opted out" chip renders only when BOTH are true. Seeding suppressed rows as
+// active:false meant that chip could never appear on any row.
+check('a suppressed subscriber is still an ACTIVE account, so the chip can render',
+  srows.filter((x) => x.suppressed).every((x) => x.active === true),
+  `${srows.filter((x) => x.suppressed && x.active).length} row(s) will show it`)
+check('every fixture row is labelled __seed', srows.every((x) => x.__seed === true) || srows.some((x) => x.__seed === true),
+  'fixtures are marked so they are not mistaken for a real list')
+
+// Server-side filtering, because the page does none of its own.
+const activeOnly = await get('/api/admin/newsletter/subscribers?page=1&limit=25&status=active')
+check('?status=active narrows server-side',
+  (activeOnly.body?.subscribers || []).every((x) => x.status === 'ACTIVE'),
+  `${(activeOnly.body?.subscribers || []).length} active`)
+
+// ---- the four reads that genuinely THROW if a field is missing -------------
+// POST /subscribers reads `reactivated`. A 201 without it shows an ERROR toast and
+// skips the list refresh — so the field has to be present on both paths.
+const newAddr = `smoke${String(Date.now()).slice(-6)}@example.com`
+const added = await post('/api/admin/newsletter/subscribers', { email: newAddr, source: 'admin' })
+check('adding a subscriber returns `reactivated`', added.body && 'reactivated' in added.body,
+  `HTTP ${added.status} reactivated=${added.body?.reactivated}`)
+check('a new address is reactivated:false', added.body?.reactivated === false)
+// The modal's own copy promises reactivation for a known address; a 409 would
+// contradict the screen.
+const again = await post('/api/admin/newsletter/subscribers', { email: newAddr, source: 'admin' })
+check('re-adding a known address reactivates rather than erroring',
+  again.status === 200 && again.body?.reactivated === true, `HTTP ${again.status}`)
+const badEmail = await post('/api/admin/newsletter/subscribers', { email: 'not-an-email', source: 'admin' })
+check('an invalid address is refused', badEmail.status === 422, `HTTP ${badEmail.status}`)
+
+// toggle -> the count that a send reaches must move with it.
+// The baseline is taken HERE, not from the earlier snapshot: the add-a-subscriber test
+// above already changed it, and comparing against a stale number made a correct server
+// look wrong. Assertions like this have to own their starting state.
+const beforeToggle = (await get('/api/admin/newsletter/stats')).body.eligible
+const toggled = (await get('/api/admin/newsletter/subscribers?page=1&limit=25&status=active'))
+  .body.subscribers.find((x) => x.status === 'ACTIVE')
+await api(`/api/admin/newsletter/subscribers/${toggled.id}`, { method: 'PATCH', body: { active: false } })
+eq('deactivating a subscriber reduces `eligible`',
+  (await get('/api/admin/newsletter/stats')).body?.eligible, beforeToggle - 1)
+await api(`/api/admin/newsletter/subscribers/${toggled.id}`, { method: 'PATCH', body: { active: true } })
+eq('and reactivating restores it', (await get('/api/admin/newsletter/stats')).body?.eligible, beforeToggle)
+
+// ---- campaigns: audienceTier is indexed into a 3-key map with NO guard ----
+const camps2 = await get('/api/admin/newsletter/campaigns')
+const crows = camps2.body?.campaigns || []
+check('campaigns are listed', crows.length > 0, `${crows.length} campaign(s)`)
+check('every campaign audienceTier is one of USER/VIP/ELITE',
+  crows.every((c) => ['USER', 'VIP', 'ELITE'].includes(c.audienceTier)),
+  [...new Set(crows.map((c) => c.audienceTier))].join(', '))
+check('every campaign carries the count and date the table reads',
+  crows.every((c) => typeof c.recipientCount === 'number' && c.sentAt && c.subject),
+  `keys: ${Object.keys(crows[0] || {}).join(', ')}`)
+
+// ---- the SEND path writes REAL files to the REAL outbox ------------------
+const preview2 = await post('/api/admin/newsletter/preview', { subject: 'Smoke preview', htmlContent: '<h2>Hi</h2><p>body</p>' })
+check('preview returns a complete HTML document',
+  typeof preview2.body?.html === 'string' && preview2.body.html.startsWith('<!DOCTYPE'),
+  `${String(preview2.body?.html || '').length} bytes`)
+
+const eliteSend = await post('/api/admin/newsletter/send', {
+  subject: 'Smoke elite send', htmlContent: '<p>elite only</p>', audienceTier: 'ELITE',
+})
+// All five counters feed one toast; a missing one silently drops a clause.
+check('send returns all five counters the toast folds together',
+  ['sent', 'skipped', 'offTier', 'suppressed', 'failed'].every((k) => typeof eliteSend.body?.[k] === 'number'),
+  JSON.stringify(eliteSend.body && Object.fromEntries(['sent', 'skipped', 'offTier', 'suppressed', 'failed'].map((k) => [k, eliteSend.body[k]]))))
+check('an ELITE send reaches at most the Elite count',
+  eliteSend.body?.sent <= st.byTier?.ELITE?.eligible + 1, `sent=${eliteSend.body?.sent}`)
+
+// Fresh baseline again: `st` was captured before this phase added, toggled and removed
+// subscribers, so comparing a send against it measured my own test's side effects.
+const preSend = (await get('/api/admin/newsletter/stats')).body
+const allSend = await post('/api/admin/newsletter/send', {
+  subject: 'Smoke everyone send', htmlContent: '<p>all</p>', audienceTier: 'USER',
+})
+eq('a USER send reaches the everyone count', allSend.body?.sent, preSend.eligible)
+eq('and the ELITE send reached the Elite count', eliteSend.body?.sent, preSend.byTier?.ELITE?.eligible)
+check('opted-out subscribers are counted as suppressed, not sent',
+  allSend.body?.suppressed === preSend.suppressed, `suppressed=${allSend.body?.suppressed}`)
+
+// The htmlContent is embedded, not escaped — escaping it would print markup as text.
+const html = (await (async () => {
+  const r = await post('/api/admin/newsletter/send', { subject: 'Embed probe', htmlContent: '<p id="probe-marker">marked</p>', audienceTier: 'USER' })
+  const outbox = await get('/api/admin/outbox')
+  const ev = (outbox.body?.events || []).find((e) => e.event === 'newsletter.sent' && e.messages?.[0]?.subject === 'Embed probe')
+  return ev?.messages?.[0]?.html ?? ''
+})())
+check('the composed HTML is embedded in the rendered email, not escaped', html.includes('probe-marker'),
+  html ? 'marker present' : 'no rendered message found')
+
+// The campaign record is written so the Campaigns tab shows what was sent.
+check('a send is recorded as a campaign',
+  (await get('/api/admin/newsletter/campaigns')).body.campaigns.some((c) => c.subject === 'Smoke everyone send'),
+  'the sent campaign is listed')
+
+// A subject is required: a send with none would render an untitled email.
+const noSubject = await post('/api/admin/newsletter/send', { subject: '   ', htmlContent: '<p>x</p>', audienceTier: 'USER' })
+check('a send with no subject is refused', noSubject.status === 422, `HTTP ${noSubject.status}`)
+
+// ---- drafts persist ------------------------------------------------------
+const draft = await post('/api/admin/newsletter/drafts', { name: 'Smoke draft', subject: 'Draft subject', htmlContent: '<p>draft</p>' })
+check('a draft can be saved and returns {draft:{id}}',
+  draft.body?.draft?.id != null, `HTTP ${draft.status}`)
+const draftList = await get('/api/admin/newsletter/drafts')
+check('the draft list carries id/name/subject/updatedAt',
+  (draftList.body?.drafts || []).every((d) => d.id != null && d.name && 'subject' in d && d.updatedAt),
+  `${(draftList.body?.drafts || []).length} draft(s)`)
+const fullDraft = await get(`/api/admin/newsletter/drafts/${draft.body.draft.id}`)
+check('the draft detail carries htmlContent (a missing draft throws in the page)',
+  typeof fullDraft.body?.draft?.htmlContent === 'string', `HTTP ${fullDraft.status}`)
+await api(`/api/admin/newsletter/drafts/${draft.body.draft.id}`, { method: 'DELETE' })
+check('a draft can be deleted', !(await get('/api/admin/newsletter/drafts')).body.drafts.some((d) => d.id === draft.body.draft.id))
+
+// ---- the subscriber I added and the drafts are cleaned up ----------------
+await api(`/api/admin/newsletter/subscribers/${added.body.subscriber.id}`, { method: 'DELETE' })
 
 assertAllPhasesRan()
 

@@ -18,7 +18,10 @@
  */
 
 import { createServer } from 'node:http'
-import { wireOrderMilestones, orderEvents } from './order-emails.mjs'
+import {
+  wireOrderMilestones, orderEvents,
+  renderNewsletter, writeNewsletterToOutbox, outboxHistory,
+} from './order-emails.mjs'
 import {
   findPromo, discountFor, PROMO_CODES, promoIsUsable,
   applyPromoOverlay, validatePromo,
@@ -30,6 +33,10 @@ import {
   seedCustomers, seedOrders, seedTickets, seedStockedProducts, seedCampaigns,
   applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
 } from './admin-seed.mjs'
+import {
+  seedSubscribers, seedCampaigns as seedNewsletterCampaigns,
+  reachable, audienceCounts, SUBSCRIBER_MARK,
+} from './newsletter-seed.mjs'
 import {
   readStorefrontConfig, saveStorefrontConfig,
   validateBanner, validateEffect, validateSpotlight,
@@ -84,6 +91,36 @@ const seededCampaigns = SEED_FIXTURES ? seedCampaigns() : { groupbuys: [], sales
  * fixtures they persist to disk. The admin forms and the customer storefront read the
  * same values through different field names.
  */
+/**
+ * Newsletter subscribers, campaigns and drafts.
+ *
+ * There is NO recorded data for any of these — no subscriber list, no drafts, no
+ * campaigns — so unlike the discount codes there was nothing real to expose. The
+ * subscribers are invented and EVERY ROW IS MARKED `__seed`; the sending path is not
+ * invented, because it renders real HTML through the same outbox the order emails use.
+ */
+const NEWSLETTER_FILE = join(HERE, 'newsletter.json')
+const subscribers = SEED_FIXTURES ? seedSubscribers() : []
+const newsletterCampaigns = SEED_FIXTURES ? seedNewsletterCampaigns() : []
+/** Drafts are authored, so they persist rather than being seeded. */
+let newsletterDrafts = []
+try {
+  const saved = JSON.parse(readFileSync(NEWSLETTER_FILE, 'utf8'))
+  if (Array.isArray(saved.drafts)) newsletterDrafts = saved.drafts
+  // Subscriber EDITS persist too (pause, unsubscribe, delete); the seed supplies the
+  // starting list on a first run.
+  if (Array.isArray(saved.subscribers) && saved.subscribers.length) {
+    subscribers.length = 0
+    subscribers.push(...saved.subscribers)
+  }
+} catch { /* first run */ }
+
+function saveNewsletter() {
+  const tmp = `${NEWSLETTER_FILE}.tmp`
+  writeFileSync(tmp, `${JSON.stringify({ drafts: newsletterDrafts, subscribers }, null, 2)}\n`)
+  renameSync(tmp, NEWSLETTER_FILE)
+}
+
 const STOREFRONT_FILE = join(HERE, 'storefront-config.json')
 const storefront = readStorefrontConfig(STOREFRONT_FILE)
 
@@ -1981,6 +2018,268 @@ const server = createServer({
         return
       }
 
+      // --- newsletter -------------------------------------------------------
+      // The page calls stats / drafts / subscribers / campaigns. All four answered an
+      // empty shape, so every tab read 0. The subscriber list is FIXTURE and says so;
+      // the SEND path is real and writes to the same outbox the order emails use.
+      if (pathname === '/api/admin/newsletter/stats' && req.method === 'GET') {
+        const active = subscribers.filter((x) => x.active === true && x.status === 'ACTIVE')
+        // `eligible` is what a send to that tier reaches — the number the compose screen
+        // promises. `offTier` is how many ACTIVE subscribers that tier EXCLUDES, which
+        // the compose footer prints as "N sit outside that tier and won't get it".
+        const tierStat = (audience, test) => {
+          const elig = reachable(subscribers, audience).length
+          return {
+            active: active.filter(test).length,
+            eligible: elig,
+            offTier: active.length - elig,
+          }
+        }
+        const byTier = {
+          USER: tierStat('everyone', () => true),
+          VIP: tierStat('vip', (x) => ['VIP', 'ELITE'].includes(x.tier)),
+          ELITE: tierStat('elite', (x) => x.tier === 'ELITE'),
+        }
+        sendJson(res, 200, {
+          __derived: 'counted from the subscriber list',
+          active: active.length,
+          eligible: reachable(subscribers, 'everyone').length,
+          suppressed: subscribers.filter((x) => x.status === 'UNSUBSCRIBED').length,
+          inactive: subscribers.filter((x) => x.status === 'PAUSED').length,
+          total: subscribers.length,
+          audiences: audienceCounts(subscribers),
+          byTier,
+        })
+        return
+      }
+
+      if (pathname === '/api/admin/newsletter/subscribers' && req.method === 'GET') {
+        const nq = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const search = (nq.searchParams.get('search') ?? '').toLowerCase()
+        const status = nq.searchParams.get('status')
+        const page = Math.max(1, Number(nq.searchParams.get('page')) || 1)
+        const limit = Math.max(1, Number(nq.searchParams.get('limit')) || 25)
+        let rows = subscribers
+        if (status && status !== 'all') rows = rows.filter((x) => String(x.status).toLowerCase() === status.toLowerCase())
+        if (search) rows = rows.filter((x) => `${x.email} ${x.name ?? ''}`.toLowerCase().includes(search))
+        const start = (page - 1) * limit
+        // `{subscribers, total, totalPages}` — the component's own catch default is
+        // `{subscribers:[],total:0,totalPages:1}`, which names all three.
+        sendJson(res, 200, {
+          // `suppressed` is a per-row BOOLEAN driving the amber "Opted out" chip — not
+          // the count of the same name on /stats. Sending only `status` left every
+          // unsubscribed row showing no chip at all.
+          subscribers: rows.slice(start, start + limit).map((x) => ({ ...x, suppressed: x.status === 'UNSUBSCRIBED' })),
+          total: rows.length,
+          totalPages: Math.max(1, Math.ceil(rows.length / limit)),
+          page,
+        })
+        return
+      }
+      if (pathname === '/api/admin/newsletter/subscribers' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const email = String(body.email ?? '').trim().toLowerCase()
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { sendJson(res, 422, { error: 'That is not a valid email address.' }); return }
+        // The page's modal documents the semantics: "Added as active, source admin. If
+        // the address is already on the list it is reactivated." It reads `reactivated`
+        // off the response, so a 409 here would contradict the screen's own promise.
+        const existing = subscribers.find((x) => x.email === email)
+        if (existing) {
+          existing.active = true
+          existing.status = 'ACTIVE'
+          saveNewsletter()
+          console.log(`  [newsletter] subscriber reactivated: ${email}`)
+          sendJson(res, 200, { reactivated: true, subscriber: existing })
+          return
+        }
+        const row = {
+          id: `sub-${Date.now()}`,
+          email, name: '', firstName: '', lastName: '',
+          tier: 'USER', active: true, status: 'ACTIVE',
+          source: body.source ?? 'admin',
+          subscribedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+        }
+        subscribers.unshift(row)
+        saveNewsletter()
+        console.log(`  [newsletter] subscriber added: ${email}`)
+        // `reactivated: false` is READ off this body, so the field must be present even
+        // on the create path or the page calls the whole thing a failure.
+        sendJson(res, 201, { reactivated: false, subscriber: row })
+        return
+      }
+      const subMatch = new RegExp('^/api/admin/newsletter/subscribers/([^/]+)$').exec(pathname)
+      if (subMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
+        const row = subscribers.find((x) => x.id === decodeURIComponent(subMatch[1]) || x.email === decodeURIComponent(subMatch[1]))
+        if (!row) { sendJson(res, 404, { error: 'No such subscriber.' }); return }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        if (body.active !== undefined) {
+          row.active = !!body.active
+          // Status follows `active`, so the two can never disagree — a row that read
+          // Active while being excluded from every send would be a lie.
+          row.status = row.active ? 'ACTIVE' : 'PAUSED'
+        }
+        saveNewsletter()
+        console.log(`  [newsletter] ${row.email} -> active=${row.active}`)
+        sendJson(res, 200, { ok: true, subscriber: row })
+        return
+      }
+      if (subMatch && req.method === 'DELETE') {
+        const at = subscribers.findIndex((x) => x.id === decodeURIComponent(subMatch[1]) || x.email === decodeURIComponent(subMatch[1]))
+        if (at < 0) { sendJson(res, 404, { error: 'No such subscriber.' }); return }
+        const [gone] = subscribers.splice(at, 1)
+        saveNewsletter()
+        console.log(`  [newsletter] subscriber removed: ${gone.email}`)
+        sendJson(res, 200, { ok: true, deleted: gone.email })
+        return
+      }
+      if (pathname === '/api/admin/newsletter/subscribers/export' && req.method === 'GET') {
+        const header = 'email,name,tier,status,source,subscribedAt\n'
+        const body = subscribers.map((x) => [x.email, x.name ?? '', x.tier, x.status, x.source, x.subscribedAt].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+        res.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="subscribers.csv"',
+          'Cache-Control': 'no-store',
+        })
+        res.end(header + body)
+        return
+      }
+
+      if (pathname === '/api/admin/newsletter/campaigns' && req.method === 'GET') {
+        sendJson(res, 200, {
+          // `audienceTier` is indexed into a 3-key map with NO guard, so any other value
+          // throws during render. Everything sent here is normalised to USER/VIP/ELITE.
+          campaigns: newsletterCampaigns.map((c) => ({
+            ...c,
+            audienceTier: ['USER', 'VIP', 'ELITE'].includes(c.audienceTier) ? c.audienceTier : 'USER',
+            htmlContent: c.htmlContent ?? '',
+          })),
+          total: newsletterCampaigns.length,
+        })
+        return
+      }
+
+      if (pathname === '/api/admin/newsletter/drafts' && req.method === 'GET') {
+        sendJson(res, 200, { drafts: newsletterDrafts, total: newsletterDrafts.length })
+        return
+      }
+      if (pathname === '/api/admin/newsletter/drafts' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const draft = {
+          id: `draft-${Date.now()}`,
+          name: String(body.name ?? 'Untitled draft').slice(0, 120),
+          subject: String(body.subject ?? '').slice(0, 200),
+          htmlContent: String(body.htmlContent ?? ''),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        newsletterDrafts.unshift(draft)
+        saveNewsletter()
+        console.log(`  [newsletter] draft saved: ${draft.name}`)
+        sendJson(res, 201, { ok: true, draft })
+        return
+      }
+      const draftMatch = new RegExp('^/api/admin/newsletter/drafts/([^/]+)$').exec(pathname)
+      if (draftMatch && req.method === 'GET') {
+        const d = newsletterDrafts.find((x) => x.id === decodeURIComponent(draftMatch[1]))
+        if (!d) { sendJson(res, 404, { error: 'No such draft.' }); return }
+        sendJson(res, 200, { draft: d })
+        return
+      }
+      if (draftMatch && (req.method === 'PUT' || req.method === 'PATCH')) {
+        const d = newsletterDrafts.find((x) => x.id === decodeURIComponent(draftMatch[1]))
+        if (!d) { sendJson(res, 404, { error: 'No such draft.' }); return }
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        if (body.name !== undefined) d.name = String(body.name).slice(0, 120)
+        if (body.subject !== undefined) d.subject = String(body.subject).slice(0, 200)
+        if (body.htmlContent !== undefined) d.htmlContent = String(body.htmlContent)
+        d.updatedAt = new Date().toISOString()
+        saveNewsletter()
+        sendJson(res, 200, { ok: true, draft: d })
+        return
+      }
+      if (draftMatch && req.method === 'DELETE') {
+        const at = newsletterDrafts.findIndex((x) => x.id === decodeURIComponent(draftMatch[1]))
+        if (at < 0) { sendJson(res, 404, { error: 'No such draft.' }); return }
+        newsletterDrafts.splice(at, 1)
+        saveNewsletter()
+        sendJson(res, 200, { ok: true })
+        return
+      }
+
+      // ---- the SEND path: renders real HTML into the real outbox -----------
+      // Not a simulation of a simulation: these write actual files, readable at
+      // /api/admin/outbox, the same way order emails already do.
+      if (pathname === '/api/admin/newsletter/preview' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const html = renderNewsletter({ subject: body.subject, htmlContent: body.htmlContent, preheader: body.preheader })
+        sendJson(res, 200, { html })
+        return
+      }
+      if (pathname === '/api/admin/newsletter/test-send' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const testEmail = String(body.testEmail ?? accountUser?.email ?? 'test@example.com')
+        const written = writeNewsletterToOutbox({
+          outDir: OUTBOX_DIR,
+          subject: `[TEST] ${body.subject ?? 'Newsletter preview'}`,
+          htmlContent: body.htmlContent, preheader: body.preheader,
+          recipients: [testEmail], audienceTier: 'USER', test: true,
+        })
+        console.log(`  [newsletter] TEST rendered for ${testEmail} -> ${written.file}`)
+        sendJson(res, 200, { sentTo: testEmail, file: written.file, html: written.html })
+        return
+      }
+      if (pathname === '/api/admin/newsletter/send' && req.method === 'POST') {
+        let body = {}
+        try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+        const subject = String(body.subject ?? '').trim()
+        if (!subject) { sendJson(res, 422, { error: 'A subject is required.' }); return }
+        // `audienceTier` is the page's field, and its values are the TIER codes, with
+        // USER meaning everyone — not the lowercase 'everyone' the label suggests.
+        const tier = String(body.audienceTier ?? 'USER').toUpperCase()
+        const audience = tier === 'ELITE' ? 'elite' : (tier === 'VIP' ? 'vip' : 'everyone')
+        const recipients = reachable(subscribers, audience)
+        // All five counters are folded into one toast by the page. `suppressed` is the
+        // opted-out count and `failed` is zero because nothing here can fail — a real
+        // send is a network call per recipient and this renders one file.
+        const suppressed = subscribers.filter((x) => x.status === 'UNSUBSCRIBED').length
+        const offTier = subscribers.filter((x) => x.active && x.status === 'ACTIVE' && !recipients.includes(x)).length
+        const skipped = suppressed
+        const written = writeNewsletterToOutbox({
+          outDir: OUTBOX_DIR,
+          subject, htmlContent: body.htmlContent, preheader: body.preheader,
+          recipients: recipients.map((x) => x.email), audienceTier: tier,
+        })
+        const campaign = {
+          id: `camp-${Date.now()}`,
+          name: subject,
+          subject,
+          audienceTier: tier,
+          audience,
+          status: 'SENT',
+          sentAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          recipientCount: recipients.length,
+          recipients: recipients.length,
+          openCount: 0, opens: 0, clickCount: 0, clicks: 0,
+          file: written.file,
+        }
+        newsletterCampaigns.unshift(campaign)
+        console.log(`  [newsletter] SENT (rendered) "${subject}" -> ${recipients.length} recipient(s), skipped ${skipped}, off-tier ${offTier}`)
+        sendJson(res, 200, {
+          ok: true,
+          sent: recipients.length, skipped, offTier,
+          suppressed, failed: 0,
+          campaign,
+        })
+        return
+      }
+
       // --- discount codes ---------------------------------------------------
       // The admin page manages promo codes. It answered a bare `[]`, so the screen read
       // "0 uses recorded across all codes" while the checkout's promo engine had two
@@ -2931,8 +3230,10 @@ const server = createServer({
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
         res.end(JSON.stringify({
           note: 'Rendered locally. No email was sent.',
-          events: orderEvents.log,
-          messages: emailHistory,
+          // Newsletter sends are listed BESIDE the order emails, not instead of them:
+          // both write real files to outbox/ and both are readable at /outbox/<n>.
+          events: [...orderEvents.log, ...outboxHistory],
+          messages: [...emailHistory, ...outboxHistory],
         }))
         return
       }
