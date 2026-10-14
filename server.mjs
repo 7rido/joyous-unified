@@ -18,6 +18,7 @@
  */
 
 import { createServer } from 'node:http'
+import { wireOrderMilestones, orderEvents } from './order-emails.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -36,6 +37,14 @@ const SAMPLES = join(HERE, 'api-samples')
  * silently never applied - so a hand-edited pack-deals.json was ignored entirely.
  */
 const PACK_DEALS_FILE = join(HERE, 'pack-deals.json')
+
+/**
+ * Rendered order emails. Written to disk so they can be opened in a browser rather
+ * than only read as escaped HTML in a terminal. NOTHING IS EVER SENT - there is no
+ * SMTP transport in this project.
+ */
+const OUTBOX_DIR = join(HERE, 'outbox')
+const emailHistory = []
 const packDeals = { __applied: 0, __rejected: [] }
 const PORT = Number(process.argv[2] ?? 4400)
 const VERBOSE = process.env.UNIFIED_LOG === '1'
@@ -84,6 +93,10 @@ try {
   catalogProducts = catalogProducts.concat(inventoryTests)
   console.log(`  seeded ${inventoryTests.length} inventory test products`)
 } catch { /* suite not generated */ }
+
+// Order milestone hook. The checkout path only emits an event; what happens on that
+// event (render, log, persist) lives in order-emails.mjs.
+wireOrderMilestones({ outDir: OUTBOX_DIR, history: emailHistory })
 
 // The overlay is applied after every catalogue source, so an authored pack deal wins.
 try {
@@ -248,6 +261,20 @@ function writePackDealsFile(all) {
   const tmp = `${PACK_DEALS_FILE}.tmp-${process.pid}`
   writeFileSync(tmp, `${JSON.stringify(all, null, 1)}\n`)
   renameSync(tmp, PACK_DEALS_FILE)
+}
+
+/**
+ * Resolve an addressId to the recorded address. Returns null when it cannot be
+ * resolved, so callers can tell "no address" from "the address is empty".
+ */
+function resolveShippingAddress(addressId) {
+  if (!addressId) return null
+  try {
+    const list = JSON.parse(readFileSync(join(SAMPLES, 'api_users_addresses.json'), 'utf8')).addresses ?? []
+    return list.find((a) => a.id === addressId) ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
@@ -620,7 +647,10 @@ const server = createServer(async (req, res) => {
           coas: [], coaRequested: false,
         }
       }),
-      shippingAddress: body.shippingAddress ?? body.address ?? null,
+      // The client sends ONLY `addressId` - it never sends the address itself. Storing
+      // `body.shippingAddress` therefore always produced null, and the order
+      // confirmation email had no address to print. Resolve the id server-side.
+      shippingAddress: body.shippingAddress ?? body.address ?? resolveShippingAddress(body.addressId),
       payment: body.payment ?? { method: body.paymentMethod ?? null, transactionHash: body.paymentProof?.transactionHash ?? null },
       paymentProof: null,
       // The single place a total is computed. Uses the SAME resolver as the order
@@ -677,6 +707,10 @@ const server = createServer(async (req, res) => {
 
     cart = []                    // a placed order empties the cart
     console.log(`  [order] created ${order.orderNumber} with ${order.items.length} item(s)`)
+
+    // Milestone emitted AFTER the order and its stock changes are settled, so a
+    // handler can never observe a half-written order.
+    orderEvents.emit('order.created', { order })
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
     res.end(JSON.stringify({ order }))
     return
@@ -1308,6 +1342,38 @@ const server = createServer(async (req, res) => {
           res.end(JSON.stringify({ ok: true, packDeals: [] }))
           return
         }
+      }
+
+      // Rendered order emails, so the payload can be looked at without a terminal.
+      //   GET /api/admin/outbox          -> the history, with subjects and links
+      //   GET /api/admin/outbox/<n>      -> message n's HTML, served inline
+      if (pathname === '/api/admin/outbox' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({
+          note: 'Rendered locally. No email was sent.',
+          events: orderEvents.log,
+          messages: emailHistory,
+        }))
+        return
+      }
+      const outboxMatch = /^\/api\/admin\/outbox\/(\d+)$/.exec(pathname)
+      if (outboxMatch && req.method === 'GET') {
+        const flat = emailHistory.flatMap((h) => h.messages)
+        const msg = flat[Number(outboxMatch[1])]
+        if (!msg) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'No such message' }))
+          return
+        }
+        try {
+          const html = readFileSync(msg.file)
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(html)
+        } catch {
+          res.writeHead(410, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: 'File missing', file: msg.file }))
+        }
+        return
       }
 
       if (pathname === '/api/admin/users' && req.method === 'GET') {

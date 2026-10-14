@@ -14,3 +14,6 @@ api-samples-original/
 # The source site's own artwork, served from dist/app/assets/. Kept locally so the
 # clone can be compared against it; not ours to redistribute.
 dist/app/assets/_source-original/
+
+# Rendered order-email payloads - generated, not source
+outbox/
