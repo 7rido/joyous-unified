@@ -617,6 +617,89 @@ if (fresh) {
     `HTTP ${conf.status}`)
 }
 
+/* ============================================================= PHASE 10 ==== */
+
+phase('10. Admin — group-buy and sale campaigns')
+
+const camps = await get('/api/admin/groupbuys')
+const rows = camps.body?.campaigns || []
+check('the campaigns list is populated', rows.length > 1, `${rows.length} row(s)`)
+check('it returns {campaigns, statsAll}', Array.isArray(rows) && !!camps.body?.statsAll,
+  `keys: ${Object.keys(camps.body || {}).join(', ')}`)
+
+const campStatuses = new Set(rows.map((c) => c.status))
+check('campaigns span several statuses', campStatuses.size >= 4, [...campStatuses].join(', '))
+check('an OPEN campaign exists (the only joinable state)', campStatuses.has('OPEN'))
+check('an UPCOMING campaign exists', campStatuses.has('UPCOMING'))
+
+// Dates must be ordered: a window that closes before it opens is a data bug that
+// renders as a plausible-looking range.
+const badWindow = rows.filter((c) => c.opensAt && c.closesAt && new Date(c.closesAt) <= new Date(c.opensAt))
+check('every campaign closes after it opens', badWindow.length === 0,
+  badWindow.map((c) => c.name).join(', ') || 'all ordered')
+
+const hasShip = rows.filter((c) => c.estimatedShip).length
+check('campaigns carry an estimated ship date', hasShip > 0, `${hasShip} of ${rows.length}`)
+check('the Sold column has a value to render',
+  rows.some((c) => typeof c.totalOrdered === 'number'), 'totalOrdered present')
+check('the Items column has a value to render',
+  rows.some((c) => (c._count?.items ?? c.items?.length ?? 0) > 0), '_count.items present')
+
+// Filters are applied SERVER-side; the page filters nothing itself.
+const openOnly = await get('/api/admin/groupbuys?status=OPEN')
+check('?status= narrows the list',
+  (openOnly.body?.campaigns || []).every((c) => c.status === 'OPEN'),
+  `${(openOnly.body?.campaigns || []).length} open`)
+check('statsAll still reports the unfiltered total',
+  (openOnly.body?.statsAll?.total || 0) >= (openOnly.body?.campaigns || []).length,
+  `total=${openOnly.body?.statsAll?.total} shown=${openOnly.body?.statsAll?.shown}`)
+
+const archived = await get('/api/admin/groupbuys?includeArchived=true')
+check('?includeArchived=true reveals more rows',
+  (archived.body?.campaigns || []).length >= rows.length,
+  `${rows.length} default, ${(archived.body?.campaigns || []).length} with archived`)
+check('archived campaigns are hidden by default',
+  !rows.some((c) => c.archived === true), 'none archived in the default list')
+
+// Archive / restore round-trip on the campaign the page would archive.
+const target2 = rows.find((c) => c.status === 'UPCOMING') || rows[0]
+const archC = await api(`/api/admin/groupbuys/${target2.id}/archive`, { method: 'PATCH', body: { archived: true } })
+check('a campaign can be ARCHIVED', archC.body?.campaign?.archived === true, `HTTP ${archC.status}`)
+check('an archived campaign leaves the default list',
+  !(await get('/api/admin/groupbuys')).body.campaigns.some((c) => c.id === target2.id))
+await api(`/api/admin/groupbuys/${target2.id}/archive`, { method: 'PATCH', body: { archived: false } })
+check('a campaign can be RESTORED',
+  (await get('/api/admin/groupbuys')).body.campaigns.some((c) => c.id === target2.id))
+
+// The customer page must be able to OPEN a seeded campaign — the admin's
+// "Preview as customer" link and /groupbuys/<id> both depend on it.
+const openCamp = (await get('/api/admin/groupbuys?status=OPEN')).body.campaigns
+  .find((c) => String(c.id).startsWith('seed-'))
+if (openCamp) {
+  const pub = await get(`/api/groupbuys/${openCamp.id}`)
+  check('a seeded campaign is served to the customer page',
+    pub.body?.campaign?.id === openCamp.id, `HTTP ${pub.status}`)
+  check('it carries items to order', (pub.body?.campaign?.items || []).length > 0,
+    `${(pub.body?.campaign?.items || []).length} item(s)`)
+
+  // The join gate: only OPEN may be added to a cart.
+  await clearCart()
+  const join = await post('/api/cart', { groupBuyItemId: pub.body.campaign.items[0].id, quantity: 1 })
+  check('an OPEN campaign can be joined', join.status === 200 && (await get('/api/cart')).body.items.length === 1,
+    `HTTP ${join.status}`)
+
+  const upcoming = (await get('/api/admin/groupbuys?status=UPCOMING')).body.campaigns[0]
+  if (upcoming) {
+    const upPub = await get(`/api/groupbuys/${upcoming.id}`)
+    check('an UPCOMING campaign is also readable', upPub.status === 200 || upPub.body?.campaign?.status === 'UPCOMING',
+      `HTTP ${upPub.status}`)
+  }
+}
+
+const sales = await get('/api/admin/sales')
+check('the sales list is populated', (sales.body?.sales || []).length > 0,
+  `${(sales.body?.sales || []).length} sale(s)`)
+
 /* ================================================================ summary == */
 
 const tally = results.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), {})

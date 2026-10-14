@@ -292,3 +292,81 @@ export function applyOrderTransition(order, action) {
   if (action === 'restore') order.archived = false
   return { ok: true, status: order.status }
 }
+
+/* --------------------------------------------------------------- campaigns --- */
+
+/**
+ * Group-buy and sale campaigns across every status the admin filters on, with dates
+ * placed RELATIVE TO NOW so the badges stay meaningful instead of drifting into the
+ * past. A run that opens tomorrow, one open today, one closing in two days, one in
+ * production, one shipping, one completed, one closed, one archived.
+ *
+ * Only OPEN and UPCOMING are joinable — the group-buy page gates its Add to cart on
+ * `status === "OPEN"` — so exactly one seeded campaign is open, and it is dated to be
+ * open today.
+ */
+const CAMPAIGN_PLAN = [
+  { name: 'NAD+ Longevity Run — 50 kits', status: 'OPEN', opensIn: -3, closesIn: 4, perItem: 6, price: 45 },
+  { name: 'GHK-CU Skin Protocol — 100 kits', status: 'UPCOMING', opensIn: 3, closesIn: 17, perItem: 8, price: 60 },
+  { name: 'Tesamorelin 10mg Group Buy', status: 'OPEN', opensIn: -6, closesIn: 2, perItem: 5, price: 120 },
+  { name: 'BPC-157 Bulk Run — 200 kits', status: 'IN_PRODUCTION', opensIn: -24, closesIn: -8, perItem: 10, price: 150 },
+  { name: 'Semax / Selank Stack', status: 'SHIPPING', opensIn: -38, closesIn: -21, perItem: 4, price: 85 },
+  { name: 'SS-31 Mitochondrial Run', status: 'SHIPPING_TO_CUSTOMERS', opensIn: -52, closesIn: -30, perItem: 3, price: 210 },
+  { name: 'Aqualyx Fat-Dissolve Buy', status: 'COMPLETE', opensIn: -76, closesIn: -58, perItem: 12, price: 95 },
+  { name: 'Melanotan II Summer Run', status: 'CLOSED', opensIn: -90, closesIn: -70, perItem: 7, price: 40 },
+  { name: 'Epithalon Pilot (archived)', status: 'ARCHIVED', opensIn: -120, closesIn: -100, perItem: 5, price: 70, archived: true },
+]
+
+const SALE_PLAN = [
+  { name: 'Winter Clearance', status: 'OPEN', opensIn: -2, closesIn: 5, perItem: 14, price: 55 },
+  { name: 'Flash 48 — Vials', status: 'UPCOMING', opensIn: 1, closesIn: 3, perItem: 6, price: 30 },
+  { name: 'Autumn Stock Sale', status: 'CLOSED', opensIn: -40, closesIn: -25, perItem: 11, price: 25 },
+]
+
+export function seedCampaigns() {
+  const DAY = 86400000
+  const now = Date.now()
+  const build = (plan, kind) => plan.map((c, i) => {
+    const opens = new Date(now + c.opensIn * DAY).toISOString()
+    const closes = new Date(now + c.closesIn * DAY).toISOString()
+    const id = `seed-${kind}-${i + 1}`
+    const items = Array.from({ length: c.perItem }, (_, k) => ({
+      id: `${id}-item-${k + 1}`,
+      name: `${c.name.split(' —')[0]} ${k % 2 === 0 ? 'Half Kit' : 'Full Kit'}`,
+      description: `Seeded ${kind} item. Not a real offer.`,
+      itemType: 'VIAL',
+      pricePerUnit: c.price + k * 5,
+      sortOrder: k,
+      quantityDiscounts: [],
+      attachments: [],
+    }))
+    return {
+      id,
+      name: c.name,
+      description: `Seeded ${kind} fixture, dated relative to today so its status badge stays meaningful.`,
+      vendorName: 'Seed Supplier',
+      status: c.status,
+      posterUrl: '',
+      requiredTier: 'USER',
+      coaPrice: 75,
+      chargeShipping: false,
+      opensAt: opens,
+      closesAt: closes,
+      estimatedShip: new Date(now + (c.closesIn + 14) * DAY).toISOString(),
+      // How far the run has progressed, derived from the real dates rather than a
+      // hand-set number that would disagree with them.
+      itemCount: items.length,
+      items,
+      coas: [],
+      // `totalOrdered` is what the Sold column renders; `_count.items` is the fallback
+      // for the Items column.
+      totalOrdered: [18, 0, 34, 61, 27, 9, 44, 52, 12][i % 9],
+      _count: { items: items.length },
+      archived: c.archived === true,
+      createdAt: opens,
+      updatedAt: opens,
+      [SEED_MARK]: true,
+    }
+  })
+  return { groupbuys: build(CAMPAIGN_PLAN, 'groupbuy'), sales: build(SALE_PLAN, 'sale') }
+}

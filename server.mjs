@@ -24,7 +24,7 @@ import {
   validateProduct, applyProductOverlay, saveProductOverlay, stockFor, TIERS, STOCK_MODES,
 } from './admin-products.mjs'
 import {
-  seedCustomers, seedOrders, seedTickets, seedStockedProducts,
+  seedCustomers, seedOrders, seedTickets, seedStockedProducts, seedCampaigns,
   applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
 } from './admin-seed.mjs'
 import { readFile } from 'node:fs/promises'
@@ -64,6 +64,12 @@ const seededTickets = SEED_FIXTURES ? seedTickets() : []
 /** Historical orders, kept SEPARATE from locally placed ones so a test can always
  *  tell which is which. */
 const seededOrders = SEED_FIXTURES ? seedOrders() : []
+/**
+ * Group-buy and sale campaigns, dated relative to boot. Without these the campaigns
+ * screen shows only the recorded ones, all CLOSED or already shipping, so no status
+ * badge other than "orders closed" is ever visible.
+ */
+const seededCampaigns = SEED_FIXTURES ? seedCampaigns() : { groupbuys: [], sales: [] }
 /** Every order the admin sees: seeded fixtures plus anything placed this session. */
 const allOrders = () => [...orders, ...seededOrders]
 
@@ -723,6 +729,23 @@ const server = createServer({
       availableStock: wireStock(v.availableStock ?? v.stockQty),
     })),
   })
+
+  // A single campaign, so the admin's "Preview as customer" link and the customer
+  // group-buy page can both open a SEEDED campaign. Recorded ones are served from their
+  // own sample file by the generic replay; seeded ones only exist in memory, so without
+  // this the preview link and /groupbuys/<seeded-id> both rendered nothing.
+  if (pathname.startsWith('/api/groupbuys/') && req.method === 'GET') {
+    const key = decodeURIComponent(pathname.slice('/api/groupbuys/'.length))
+    if (key && !key.includes('/')) {
+      const rec = catalogCampaigns.find((c) => c.id === key)
+      const seed = [...seededCampaigns.groupbuys, ...seededCampaigns.sales].find((c) => c.id === key)
+      const camp = rec ?? seed
+      if (camp) {
+        sendJson(res, 200, { campaign: camp })
+        return
+      }
+    }
+  }
 
   if (pathname === '/api/products/catalog' && req.method === 'GET') {
     // A disabled product is hidden from the storefront but NOT deleted, and the admin
@@ -1815,6 +1838,38 @@ const server = createServer({
         return
       }
 
+      // --- campaigns: archive / restore / delete ----------------------------
+      // The page PATCHes `{archived}` to `/<api>/<id>/archive` and DELETEs `/<api>/<id>`.
+      // Neither existed, so Archive and Delete toasted success and changed nothing.
+      const campMatch = new RegExp('^/api/admin/(groupbuys|sales)/([^/]+?)(/archive)?$').exec(pathname)
+      if (campMatch) {
+        const [, kind, id, isArchive] = campMatch
+        const pool = kind === 'groupbuys' ? seededCampaigns.groupbuys : seededCampaigns.sales
+        const rec = catalogCampaigns
+        const row = pool.find((c) => c.id === id) ?? rec.find((c) => c.id === id)
+        if (!row) { sendJson(res, 404, { error: 'No such campaign.', id }); return }
+        if (isArchive && (req.method === 'PATCH' || req.method === 'PUT' || req.method === 'POST')) {
+          let body = {}
+          try { body = JSON.parse((await readBody(req)) || '{}') } catch { /* ignore */ }
+          row.archived = body.archived !== false
+          console.log(`  [admin] ${kind} ${row.name}: archived=${row.archived}`)
+          sendJson(res, 200, { ok: true, campaign: row })
+          return
+        }
+        if (!isArchive && req.method === 'DELETE') {
+          const at = pool.indexOf(row)
+          if (at >= 0) pool.splice(at, 1)
+          else { const j = rec.indexOf(row); if (j >= 0) rec.splice(j, 1) }
+          console.log(`  [admin] ${kind} deleted: ${row.name}`)
+          sendJson(res, 200, { ok: true, deleted: row.id })
+          return
+        }
+        if (!isArchive && req.method === 'GET') {
+          sendJson(res, 200, { campaign: row })
+          return
+        }
+      }
+
       // --- pack deals: the one AUTHORED, PERSISTED surface ------------------
       // GET    /api/admin/products/<productId>/variants/<variantId>/pack-deals
       // PUT    same path, body [deal, ...]  -> validates, replaces, persists
@@ -2067,17 +2122,30 @@ const server = createServer({
 
       if ((pathname === '/api/admin/groupbuys' || pathname === '/api/admin/sales') && req.method === 'GET') {
         const isGb = pathname.endsWith('groupbuys')
-        const rows = isGb ? catalogCampaigns : []
-        const counts = rows.reduce((acc, c) => {
+        const q = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+        const wantStatus = q.searchParams.get('status')
+        const includeArchived = q.searchParams.get('includeArchived') === 'true'
+        const search = (q.searchParams.get('search') ?? '').toLowerCase()
+        const seeded = isGb ? seededCampaigns.groupbuys : seededCampaigns.sales
+        const all = [...(isGb ? catalogCampaigns : []), ...seeded]
+        let rows = all
+        if (!includeArchived) rows = rows.filter((c) => c.archived !== true)
+        if (wantStatus && wantStatus !== 'all') rows = rows.filter((c) => c.status === wantStatus)
+        if (search) rows = rows.filter((c) => `${c.name} ${c.vendorName ?? ''}`.toLowerCase().includes(search))
+        // statsAll is the UNFILTERED picture ("statsAll" means all), while the rows are
+        // the filtered page. Reporting the filtered count as the total would understate
+        // the run as soon as a status filter was applied.
+        const byStatus = all.reduce((acc, c) => {
           acc[c.status] = (acc[c.status] ?? 0) + 1
           return acc
         }, {})
         const body = {
-          __derived: 'recorded campaigns regrouped for the admin list',
+          __derived: 'recorded campaigns plus seeded fixtures for the admin list',
           [isGb ? 'campaigns' : 'sales']: rows,
-          statsAll: { total: rows.length, byStatus: counts },
+          statsAll: { total: all.length, shown: rows.length, byStatus },
+          stats: { total: all.length, shown: rows.length, byStatus },
         }
-        console.log(`  [admin] ${pathname} -> ${rows.length} row(s) (recorded campaigns)`)
+        console.log(`  [admin] ${pathname} -> ${rows.length}/${all.length} row(s)${wantStatus ? ` (status=${wantStatus})` : ''}`)
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
         res.end(JSON.stringify(body))
         return
