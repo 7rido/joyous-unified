@@ -1,0 +1,160 @@
+{
+ "campaign": {
+  "id": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+  "name": "Eloralintide",
+  "description": "We've been watching the market for this hot new product and are finally ready to offer it having seen testing from the prior batch. The new batch is expected to be completed mid September.\n\nTotal expected timeframe:  5-7 weeks covering the open buy, production, ship to US, and then reship.\n\nKit pricing is all inclusive:  Standard 10 vial kit or 5 vial 1/2 kit, International Shipping, Domestic Shipping to your door, & 3 vial variance testing at a domestic lab (BTLabs or Freedom as they both have an official standard for this product) (Identificaiton, Mass, & Purity)\n\nStandard guarantee >98% purity, within 10% of target mg, reship if seized.\nPrior batch testing for 5mg was 99.83% & 6.06mg",
+  "vendorName": "Energix Supplier 14",
+  "status": "SHIPPING_TO_CUSTOMERS",
+  "posterUrl": null,
+  "requiredTier": "USER",
+  "coaPrice": null,
+  "opensAt": "2026-08-28T10:00:00.000Z",
+  "closesAt": "2026-09-08T03:59:00.000Z",
+  "estimatedShip": null,
+  "items": [
+   {
+    "id": "4bf4cc0b-a449-481f-9184-414c10477bf5",
+    "name": "Eloralintide 5mg 1/2 kit",
+    "description": "5 vials",
+    "itemType": "KIT",
+    "pricePerUnit": 150,
+    "sortOrder": 0,
+    "quantityDiscounts": [],
+    "attachments": []
+   },
+   {
+    "id": "1d012456-b562-4f87-9ab9-f2a6df236448",
+    "name": "Eloralintide 5mg Full Kit",
+    "description": "10 vials",
+    "itemType": "KIT",
+    "pricePerUnit": 270,
+    "sortOrder": 1,
+    "quantityDiscounts": [],
+    "attachments": []
+   },
+   {
+    "id": "c424cb1a-a2e7-41fc-ace8-6f9692d2103c",
+    "name": "Eloralintide 10mg 1/2 kit",
+    "description": "5 vials",
+    "itemType": "KIT",
+    "pricePerUnit": 185,
+    "sortOrder": 2,
+    "quantityDiscounts": [],
+    "attachments": []
+   },
+   {
+    "id": "ff5f4fed-8052-496b-861c-1175efd3e6c5",
+    "name": "Eloralintide 10mg Full Kit",
+    "description": "10 vials",
+    "itemType": "KIT",
+    "pricePerUnit": 340,
+    "sortOrder": 3,
+    "quantityDiscounts": [],
+    "attachments": []
+   }
+  ],
+  "coas": [
+   {
+    "id": "ce99d62c-b72a-421a-adf4-d001aab2e33c",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Freedom Elora 10 102026",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1791650454922.pdf",
+    "fileType": "pdf",
+    "fileName": "Freedom Elora 10 102026.pdf",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-10-10T16:40:54.927Z"
+   },
+   {
+    "id": "4ddf52a3-76ef-4937-affc-7a08253a2c95",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Freedom Elora 5 102026",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1791378848833.pdf",
+    "fileType": "pdf",
+    "fileName": "Freedom Elora 5 102026.pdf",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-10-07T13:14:08.838Z"
+   },
+   {
+    "id": "3ea1bced-69cc-4b9c-b8e4-cdaa876e7e7b",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Weekly Metabolic Research Tracker Graphic",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1787889860648.png",
+    "fileType": "image",
+    "fileName": "Weekly Metabolic Research Tracker Graphic.png",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-08-28T04:04:20.666Z"
+   },
+   {
+    "id": "e9d72c5a-6a9e-4320-8583-577a98a7053e",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Joyous_Eloralintide_Weekly_Metabolic_Research_Log",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1787889831852.pdf",
+    "fileType": "pdf",
+    "fileName": "Joyous_Eloralintide_Weekly_Metabolic_Research_Log.pdf",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-08-28T04:03:51.854Z"
+   },
+   {
+    "id": "28b8f749-25d6-4cf2-ab5c-7067a946111a",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Eloralintide 3 Roads to 9mg Graphic",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1787889797494.png",
+    "fileType": "image",
+    "fileName": "Eloralintide 3 Roads to 9mg Graphic.png",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-08-28T04:03:17.506Z"
+   },
+   {
+    "id": "b99db44d-d7b8-4f34-ab95-6e53795d632f",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Eloralintide Phase 2 Protocol Map",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1787889768830.png",
+    "fileType": "image",
+    "fileName": "Eloralintide Phase 2 Protocol Map.png",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-08-28T04:02:48.860Z"
+   },
+   {
+    "id": "e010bd26-78d1-4d74-b745-633eb7a5554c",
+    "campaignId": "0cd200d5-1a48-4c62-b8ed-0a48d759aaf7",
+    "title": "Eloralintide Joyous Research Guide",
+    "url": "/uploads/groupbuy-attachments/Eloralintide-1787889740236.pdf",
+    "fileType": "pdf",
+    "fileName": "Eloralintide Joyous Research Guide.pdf",
+    "labName": null,
+    "code": null,
+    "createdAt": "2026-08-28T04:02:20.241Z"
+   }
+  ],
+  "updates": [
+   {
+    "id": "dfd7135a-c066-457e-bae2-5f0e90333357",
+    "message": "Since piggy backing these samples in with my rush package for the NA Amidate but, they rushed the Elora as well! Both 5mg & 10mg results are uploaded in the GB on the site and I will work on shipping orders today.",
+    "createdAt": "2026-10-07T13:17:32.446Z"
+   },
+   {
+    "id": "a021f32b-95b9-411c-9c4c-016f618eb1b6",
+    "message": "All product is now in hand as of today. First testing round has gone out to Freedom via overnight shipping and will be in their hands Monday. Another 2 vials of each will be heading to BTLabs this coming week. Both labs have the Eloralintide standard to test against. Once testing is back (most likely Freedom will be first to arrive), shipping will commence!",
+    "createdAt": "2026-10-03T20:28:48.884Z"
+   },
+   {
+    "id": "635c1ff0-71d8-405e-903b-fe557437fca7",
+    "message": "Update from the supplier:  Hello dear! First the Elora factory will deliver the goods to the warehouse on September 22nd. Then, I will send you the shipping pictures for delivery on September 23rd. On September 25th, I will send you the logistics form. You should receive the package around sep.29",
+    "createdAt": "2026-09-22T16:09:19.356Z"
+   },
+   {
+    "id": "21bc0e43-45c4-4de0-b11c-3c0ac2488f44",
+    "message": "Order has been placed with the vendor and is expected to ship between Sept 8th and Sept 15th. Reopening for a few more people to join that were unable to during the migration of the site and upgrade to site security. This is not delaying the buy at all, just giving a more people the opportunity to join while we wait for shipping.",
+    "createdAt": "2026-09-04T17:31:50.816Z"
+   }
+  ],
+  "createdAt": "2026-08-28T03:06:44.654Z",
+  "updatedAt": "2026-10-07T13:20:52.089Z"
+ }
+}
