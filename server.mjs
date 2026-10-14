@@ -1290,7 +1290,13 @@ const server = createServer(async (req, res) => {
       if (pathname === '/api/admin/orders' && req.method === 'GET' && orders.length) {
         console.log(`  [admin] /admin/orders -> ${orders.length} locally placed order(s)`)
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-        res.end(JSON.stringify({ orders, total: orders.length, page: 1, pages: 1 }))
+        // `confirmed` is derived from the order status and MUST be present: the admin
+        // order list reads it to show payment state, and confirm-payment writes it.
+        // It was absent, so a confirmation succeeded and then vanished on reload.
+        res.end(JSON.stringify({
+          orders: orders.map((o) => ({ ...o, confirmed: o.status !== 'AWAITING_PAYMENT_REVIEW' })),
+          total: orders.length, page: 1, pages: 1,
+        }))
         return
       }
 
