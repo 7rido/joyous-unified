@@ -26,12 +26,41 @@ Route tables, cross-app links and which host serves what: **`TOPOLOGY.md`**.
 entries are relative children under `/admin`. 89 API responses were recorded; everything
 else the client calls is authored here.
 
+## The community stages
+
+The community work ran in numbered stages, and later sections of this file refer to them
+by name, so they are written down here. Stages 1–2 captured and served the client; stage 3
+substituted its API in three parts.
+
+| Stage | What it was | State | Commit |
+| --- | --- | --- | --- |
+| **1** | Capture the forum SPA — shell, 24 assets, 38 avatars | done | `e7e0054` |
+| **2** | Serve it on the `community.*` host | done | `e7e0054` |
+| **3a** | Substituted API — session and auth | done | `e3475ea` |
+| **3b** | Read surface, 18 endpoints, plus the demo seed | done | `074aa62` `e10bcb4` |
+| **3c** | **Write surface — 10 endpoints** | **not started** | — |
+| **3d** | Discord and LiveKit | **deliberately not done** | — |
+
+**3d is a decision, not an omission.** You cannot reproduce somebody else's Discord bot or
+a LiveKit SFU locally, so those paths answer `503 __simulated` and name the missing
+integration. Faking them would be worse than refusing — a fake chat room is
+indistinguishable from an empty one.
+
+Two things sit **outside** this numbering and are not stage work:
+
+- **Four unbuilt community reads** — `/calendar`, `/mod/reports`, `/connections`, `/gifs`.
+  Deferred while the reads the main screens demanded were built. `/calendar` is the
+  visible one: a nav item with a real screen behind it.
+- **The `/sso` handoff**, wired at both ends but never exercised. The member app POSTs
+  `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
+  exchanges it at `/auth/handoff`. All three pieces exist locally.
+
 ## Where the API stands
 
 | Surface | Recorded | Authored | Still empty |
 | --- | --- | --- | --- |
 | Member (`/api/*`) | 85 samples | login/register synthesised | — |
-| Admin (`/api/admin/*`) | **4**, all `public_*` | ~113 paths backed by real routes | **12 distinct endpoints** |
+| Admin (`/api/admin/*`) | **4**, all `public_*` | ~113 paths backed by real routes | **10 endpoints** |
 | Community (`/api/community/*`) | 2 public | 18 endpoints + demo dataset | 4 reads; writes not built |
 
 There is **no database**. Persistence is JSON overlays written atomically and
@@ -143,16 +172,20 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **The 12 admin reads above** — each a thin handler over existing data. Removes the last
+1. **The 10 admin reads above** — each a thin handler over existing data. Removes the last
    empty shapes from a route tour.
 2. **Community's four unimplemented reads** — `/calendar`, `/mod/reports`, `/connections`,
-   `/gifs`.
+   `/gifs`. Outside the stage numbering; see the stage table above.
 3. **Community writes (Stage 3c)** — posts, replies, reactions, polls, RSVPs. Needs
-   persistence following the overlay pattern.
+   persistence following the overlay pattern. The largest remaining gap, and the one that
+   changes what the demo is rather than filling in an edge.
 4. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
    `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
    exchanges it at `/api/community/auth/handoff`. Both ends exist locally.
 5. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
+
+**Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and
+always will.
 
 ## Known limits of the harness
 
