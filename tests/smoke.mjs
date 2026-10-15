@@ -159,7 +159,10 @@ async function api(path, { method = 'GET', body, token, headers = {}, timeoutMs 
     const text = await res.text()
     let json = null
     try { json = text ? JSON.parse(text) : null } catch { json = { raw: text.slice(0, 200) } }
-    return { status: res.status, body: json }
+    // setCookie is exposed because the community session is cookie-based and the write
+    // surface needs an authenticated request. Reading it here means a caller does not
+    // have to re-implement the transport just to hold a session.
+    return { status: res.status, body: json, setCookie: res.headers.get('set-cookie') ?? '' }
   } catch (e) {
     const why = e?.name === 'AbortError' ? `timed out after ${timeoutMs}ms` : String(e?.cause?.code || e?.message || e)
     return { status: 0, body: { error: 'transport failure', detail: why, path, method } }
@@ -828,29 +831,59 @@ check('the Today activity line resolves', typeof todayLine.body?.newOrders === '
 
 phase('fallback pages', 'The fallback endpoints a page actually reads')
 
-// These served `{}` while a page was READING them. An empty object satisfies
-// `if (data)`, so every number rendered blank and the response looked correct — the
-// same failure as the dashboard tiles. Each is asserted against the list it feeds.
-const todayStats = await get('/api/admin/orders/today-stats')
-check('today-stats exposes the keys OrdersPage reads',
-  ['deliveredToday', 'shippedToday', 'newToday'].every((k) => k in (todayStats.body || {})),
-  `keys: ${Object.keys(todayStats.body || {}).join(', ')}`)
-// The predicate is "TODAY", not "any order with that status". Asserting
-// `status === 'DELIVERED'` against the WHOLE list was my mistake: it compared a
-// today-scoped counter to an all-time total and failed on a server that was right.
-const allOrd2 = (await get('/api/admin/orders')).body.orders
-const todayKey = new Date().toISOString().slice(0, 10)
-const placedToday = allOrd2.filter((o) => String(o.placedAt || '').slice(0, 10) === todayKey)
-eq('deliveredToday equals the orders DELIVERED today', todayStats.body?.deliveredToday,
-  placedToday.filter((o) => o.status === 'DELIVERED').length)
-eq('shippedToday equals the orders SHIPPED today', todayStats.body?.shippedToday,
-  placedToday.filter((o) => o.status === 'SHIPPED').length)
-eq('newToday equals the orders PLACED today', todayStats.body?.newToday, placedToday.length)
-// A dashboard of zeros cannot be distinguished from a broken one, so the fixtures are
-// arranged to put a real order in each bucket.
-check('the fixtures make all three counters non-zero',
-  (todayStats.body?.deliveredToday || 0) > 0 && (todayStats.body?.shippedToday || 0) > 0 && (todayStats.body?.newToday || 0) > 0,
-  `delivered=${todayStats.body?.deliveredToday} shipped=${todayStats.body?.shippedToday} new=${todayStats.body?.newToday}`)
+  // These served `{}` while a page was READING them. An empty object satisfies
+  // `if (data)`, so every number rendered blank and the response looked correct — the
+  // same failure as the dashboard tiles. Each is asserted against the list it feeds.
+  //
+  // An order is placed and delivered HERE, before BOTH the counters and the list below
+  // are read, because the eq() assertions compare one against the other. Building the
+  // state the assertions need is what makes them independent of when the suite runs.
+  //
+  // This previously relied on the seed happening to contain a DELIVERED order placed
+  // today. It does not: the counter scopes to the current UTC day, so whether a delivered
+  // order falls inside it depends on the seed's age and the time of the run. The check
+  // passed by luck and started failing after 00:00 UTC — a time bomb, not a regression.
+  await clearCart()
+  const deliverable = (await get('/api/products/catalog')).body.products.find((x) => !x.soldOut)
+  if (deliverable) {
+    await post('/api/cart', {
+      productId: deliverable.id, variantId: deliverable.variants?.[0]?.id, quantity: 1,
+    })
+    const fresh = await api('/api/orders/create', {
+      method: 'POST',
+      body: { addressId: ADDRESS_ID, paymentMethod: 'USDT' },
+      headers: { 'Idempotency-Key': 'smoke-delivered-today' },
+    })
+    const freshId = fresh.body?.order?.id
+    if (freshId) {
+      await api(`/api/admin/orders/${freshId}/confirm-payment`, { method: 'POST' })
+      await api(`/api/admin/orders/${freshId}/ship`, { method: 'POST' })
+      await api(`/api/admin/orders/${freshId}/deliver`, { method: 'POST' })
+    }
+    await clearCart()
+  }
+
+  const todayStats = await get('/api/admin/orders/today-stats')
+  check('today-stats exposes the keys OrdersPage reads',
+    ['deliveredToday', 'shippedToday', 'newToday'].every((k) => k in (todayStats.body || {})),
+    `keys: ${Object.keys(todayStats.body || {}).join(', ')}`)
+  // The predicate is "TODAY", not "any order with that status". Asserting
+  // `status === 'DELIVERED'` against the WHOLE list was my mistake: it compared a
+  // today-scoped counter to an all-time total and failed on a server that was right.
+  const allOrd2 = (await get('/api/admin/orders')).body.orders
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const placedToday = allOrd2.filter((o) => String(o.placedAt || '').slice(0, 10) === todayKey)
+  eq('deliveredToday equals the orders DELIVERED today', todayStats.body?.deliveredToday,
+    placedToday.filter((o) => o.status === 'DELIVERED').length)
+  eq('shippedToday equals the orders SHIPPED today', todayStats.body?.shippedToday,
+    placedToday.filter((o) => o.status === 'SHIPPED').length)
+  eq('newToday equals the orders PLACED today', todayStats.body?.newToday, placedToday.length)
+  // A dashboard of zeros cannot be distinguished from a broken one. This now holds by
+  // construction rather than by luck, because the order above was delivered in this run.
+  check('all three counters are non-zero',
+    (todayStats.body?.deliveredToday || 0) > 0 && (todayStats.body?.shippedToday || 0) > 0
+      && (todayStats.body?.newToday || 0) > 0,
+    `delivered=${todayStats.body?.deliveredToday} shipped=${todayStats.body?.shippedToday} new=${todayStats.body?.newToday}`)
 
 const oc = await get('/api/admin/open-carts?page=1&limit=25')
 check('open-carts returns {carts, stats, pagination}',
@@ -1565,6 +1598,84 @@ check('/overview carries memberCount, onlineCount and staff[]',
 check('responses survive multi-byte characters (the Content-Length trap)',
   (rooms.body?.rooms || []).some((r) => r.emoji && r.emoji.length > 1),
   `emoji: ${rooms.body?.rooms?.[0]?.emoji}`)
+
+// --- the write surface (Stage 3c) ---------------------------------------
+// Each of these was 501 before. The response SHAPES matter as much as the status: the
+// client reads `{reacted}` and treats null as failure, and drops `{poll}` / `{event}`
+// straight into state, so a 200 with the wrong body still breaks the screen.
+const commSession = await post('/api/community/auth/login',
+  { email: 'ada@example.com', password: 'anything' })
+const sid = /joyous_community_sid=([^;]+)/.exec(commSession.setCookie ?? '')?.[1] ?? ''
+// The write surface is cookie-authenticated, so every mutating call has to carry it.
+const jar = { headers: { Cookie: `joyous_community_sid=${sid}` } }
+check('signing in issues a session cookie', sid.length > 0, sid ? 'issued' : 'no set-cookie')
+
+const madePost = await post('/api/community/posts', {
+  roomId: 'room-general', title: 'smoke post', body: 'written by the suite',
+}, jar)
+check('POST /posts creates a post and returns {post}',
+  madePost.status === 201 && madePost.body?.post?.id != null
+    && madePost.body.post.room?.slug === 'general',
+  `status=${madePost.status} room=${JSON.stringify(madePost.body?.post?.room)}`)
+const newPostId = madePost.body?.post?.id
+
+const reacted = await post('/api/community/reactions', { postId: 'post-1', emoji: '👍' }, jar)
+check('POST /reactions returns {reacted} — the client reads that flag, not the status',
+  reacted.status === 200 && typeof reacted.body?.reacted === 'boolean',
+  JSON.stringify(reacted.body))
+// Toggling twice must land back where it started, or the count drifts.
+const reacted2 = await post('/api/community/reactions', { postId: 'post-1', emoji: '👍' }, jar)
+check('a second identical reaction toggles the other way',
+  reacted2.body?.reacted === !reacted.body?.reacted,
+  `${reacted.body?.reacted} then ${reacted2.body?.reacted}`)
+
+const voted = await post('/api/community/polls/poll-1/vote', { optionIds: ['opt-1'] }, jar)
+check('POST /polls/:id/vote returns the whole {poll} for the client to re-render',
+  voted.status === 200 && Array.isArray(voted.body?.poll?.options),
+  `status=${voted.status} options=${voted.body?.poll?.options?.length}`)
+check('the vote is recorded on the poll', 
+  (voted.body?.poll?.myVotes ?? []).includes('opt-1'),
+  `myVotes=${JSON.stringify(voted.body?.poll?.myVotes)}`)
+
+const rsvpd = await put('/api/community/events/event-2/rsvp', { status: 'GOING' }, jar)
+check('PUT /events/:id/rsvp returns the whole {event}',
+  rsvpd.status === 200 && rsvpd.body?.event?.myRsvp === 'GOING',
+  `status=${rsvpd.status} myRsvp=${rsvpd.body?.event?.myRsvp}`)
+
+const replied = await post('/api/community/posts/post-1/comments', { body: 'smoke reply' }, jar)
+check('POST /posts/:id/comments creates a comment',
+  replied.status === 201 && replied.body?.comment?.id != null, `status=${replied.status}`)
+
+const readAll = await post('/api/community/read-all', {}, jar)
+check('POST /read-all succeeds', readAll.status === 200, `status=${readAll.status}`)
+
+const notesRead = await post('/api/community/notifications/read', {}, jar)
+check('POST /notifications/read succeeds', notesRead.status === 200, `status=${notesRead.status}`)
+
+const report = await post('/api/community/reports', { postId: 'post-1', reason: 'smoke test' }, jar)
+check('POST /reports returns {message} for the toast', typeof report.body?.message === 'string',
+  JSON.stringify(report.body).slice(0, 70))
+check('a report shorter than 3 characters is rejected rather than stored',
+  (await post('/api/community/reports', { postId: 'post-1', reason: 'x' }, jar)).status === 400,
+  'short reason')
+
+// Writes are attributed to the signed-in member, so an anonymous one must 401 — not 200.
+check('an anonymous write is refused with 401',
+  (await post('/api/community/posts', { roomId: 'room-general', title: 'nope' })).status === 401,
+  'signed out')
+// The client validates too, but the server must not rely on that.
+check('a post with no room is refused',
+  (await post('/api/community/posts', { title: 'no room' }, jar)).status === 400, 'missing roomId')
+
+// Deleting the smoke post keeps the suite re-runnable — otherwise every run adds one.
+if (newPostId) {
+  // NOT named `del` — that shadows the del() helper and this line would be in its
+  // temporal dead zone, which reads as "cannot access before initialization" at runtime.
+  const removed = await del(`/api/community/posts/${newPostId}`, jar)
+  check('DELETE /posts/:id removes it again',
+    removed.status === 200 && (await get(`/api/community/posts/${newPostId}`, jar)).status === 404,
+    `status=${removed.status}`)
+}
 
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')

@@ -50,15 +50,27 @@ Timestamps are relative to boot, so "2 days ago" stays true rather than drifting
 
 ## Endpoints
 
-Implemented: `auth/me` (GET, PATCH), `auth/login`, `auth/logout`, `auth/signup`,
-`auth/handoff`, `uploads`, `rooms`, `overview`, `unread`,
-`notifications/unread-count`, `notifications`, `events`, `members`, `posts`,
-`posts/participants`, `posts/:id`.
+Reads: `auth/me`, `rooms`, `overview`, `unread`, `notifications`,
+`notifications/unread-count`, `events`, `members`, `posts`, `posts/participants`,
+`posts/:id`.
+
+Writes: `posts` (POST, PATCH, DELETE), `posts/:id/comments`, `comments/:id` (PATCH,
+DELETE), `reactions`, `polls/:id/vote`, `polls/:id/close`, `events` (POST),
+`events/:id/rsvp`, `reports`, `read-all`, `notifications/read`, `uploads`, plus
+`auth/login`, `auth/logout`, `auth/signup`, `auth/handoff`.
 
 Still refusing: `calendar`, `mod/reports`, `connections`, `gifs` → 501.
 `live/*`, `auth/discord/*`, `mod/discord*` → 503 simulated.
 
-Writes (creating posts, replies, reactions, polls, RSVPs) are **not implemented**. The
-controls render and fire their requests, but the endpoint answers `501` — and the client
-swallows that silently, so a click produces **no error, no toast and no visible change**.
-`Load more` is the exception: pagination works and fetches the next page.
+**Writes work.** Posting, replying, reacting, voting in polls, closing polls, RSVPs,
+creating events, reporting, marking read, and editing or deleting your own posts and
+comments. They persist to `community-content.json` and survive a restart.
+
+Reset the forum by deleting that file:
+
+```sh
+rm joyous-unified/community-content.json   # back to the demo seed
+```
+
+Writes are attributed to the signed-in member, so signing in as different accounts shows
+different permissions — `chen@example.com` cannot close a poll, `ada@example.com` can.

@@ -34,10 +34,13 @@
  */
 
 import { FIXTURE_MEMBER } from './community-fixtures.mjs'
+import { ROOMS, MEMBERS, LOGIN_INDEX, participantsFor } from './community-demo.mjs'
 import {
-  ROOMS, POSTS, MEMBERS, EVENTS, NOTIFICATIONS, COMMENTS, LOGIN_INDEX,
-  overview, unreadState, unreadCount, participantsFor, postById, commentsFor,
-} from './community-demo.mjs'
+  listPosts, getPost, commentsOf, createPost, patchPost, deletePost,
+  addComment, patchComment, deleteComment, toggleReaction, votePoll, closePoll,
+  listEvents, rsvp, createEvent, markRead, markNotificationsRead, listNotifications,
+  fileReport, unreadState, unreadCount, overview, ME, stats,
+} from './community-store.mjs'
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -259,6 +262,109 @@ export async function handleCommunityApi(req, res, pathname) {
     return true
   }
 
+  // --- writes need a session ---------------------------------------------
+  // The client surfaces a 401 as an error toast. /auth/* is handled above; every other
+  // non-GET in this namespace is a mutation and is attributed to the signed-in member.
+  if (req.method !== 'GET' && !route.startsWith('/auth/') && !sessionOf(req)) {
+    json(res, 401, { error: 'Please sign in.' })
+    return true
+  }
+
+  // --- the write surface -------------------------------------------------
+  // Contracts read off community-DZQlDHLK.js. Two of them are easy to get wrong:
+  //   /reactions returns `{reacted}` and the CALLER treats null as failure, so a 200
+  //   without that field shows "Couldn't react" despite having stored the reaction.
+  //   /polls/:id/vote and PUT /events/:id/rsvp return the WHOLE updated object, which
+  //   the client drops straight into state.
+
+  if (route === '/posts' && req.method === 'POST') {
+    const out = createPost(await readBody(req))
+    if (out.error) { json(res, 400, { error: out.error }); return true }
+    json(res, 201, out)
+    return true
+  }
+
+  if (route === '/reactions' && req.method === 'POST') {
+    const body = await readBody(req)
+    const out = toggleReaction({ postId: body.postId, commentId: body.commentId }, body.emoji)
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+
+  if (route === '/read-all' && req.method === 'POST') {
+    json(res, 200, { ...markRead(await readBody(req)), __fixture: true })
+    return true
+  }
+
+  if (route === '/notifications/read' && req.method === 'POST') {
+    json(res, 200, { ...markNotificationsRead(), __fixture: true })
+    return true
+  }
+
+  if (route === '/reports' && req.method === 'POST') {
+    const out = fileReport(await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 201, out)
+    return true
+  }
+
+  if (route === '/events' && req.method === 'POST') {
+    const out = createEvent(await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 201, out)
+    return true
+  }
+
+  const voteMatch = new RegExp('^/polls/([^/]+)/vote$').exec(route)
+  if (voteMatch && req.method === 'POST') {
+    const out = votePoll(decodeURIComponent(voteMatch[1]), await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+
+  const closeMatch = new RegExp('^/polls/([^/]+)/close$').exec(route)
+  if (closeMatch && req.method === 'POST') {
+    const out = closePoll(decodeURIComponent(closeMatch[1]))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+
+  const rsvpMatch = new RegExp('^/events/([^/]+)/rsvp$').exec(route)
+  if (rsvpMatch && req.method === 'PUT') {
+    const out = rsvp(decodeURIComponent(rsvpMatch[1]), await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+
+  const commentMatch = new RegExp('^/posts/([^/]+)/comments$').exec(route)
+  if (commentMatch && req.method === 'POST') {
+    const out = addComment(decodeURIComponent(commentMatch[1]), await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 201, out)
+    return true
+  }
+
+  const commentIdMatch = new RegExp('^/comments/([^/]+)$').exec(route)
+  if (commentIdMatch) {
+    const id = decodeURIComponent(commentIdMatch[1])
+    if (req.method === 'PATCH') {
+      const out = patchComment(id, await readBody(req))
+      if (out.error) { json(res, 400, out); return true }
+      json(res, 200, out)
+      return true
+    }
+    if (req.method === 'DELETE') {
+      const out = deleteComment(id)
+      if (out.error) { json(res, 400, out); return true }
+      json(res, 200, { ok: true, __fixture: true })
+      return true
+    }
+  }
+
   // --- the read surface --------------------------------------------------
   // Shapes read off the bundle. Note ALL of these are wrapper objects, not bare arrays:
   // the client does `data.rooms`, `data.posts`, `data.events`, so a bare array would
@@ -282,7 +388,7 @@ export async function handleCommunityApi(req, res, pathname) {
     return true
   }
   if (route === '/events' && req.method === 'GET') {
-    json(res, 200, { events: EVENTS, __fixture: true })
+    json(res, 200, { events: listEvents(), __fixture: true })
     return true
   }
   if (route === '/members' && req.method === 'GET') {
@@ -290,7 +396,8 @@ export async function handleCommunityApi(req, res, pathname) {
     return true
   }
   if (route === '/notifications' && req.method === 'GET') {
-    json(res, 200, { notifications: NOTIFICATIONS, total: NOTIFICATIONS.length, __fixture: true })
+    // `unread` is read by the page to decide whether to auto-fire /notifications/read.
+    json(res, 200, { ...listNotifications(), total: listNotifications().notifications.length, __fixture: true })
     return true
   }
 
@@ -300,7 +407,7 @@ export async function handleCommunityApi(req, res, pathname) {
     // `room` is the room SLUG, not its id — the client passes the route's :slug straight
     // through. Filtering on id silently returned nothing for every room page.
     const slug = new URL(req.url ?? '/', 'http://x').searchParams.get('room')
-    const scoped = slug ? POSTS.filter((post) => post.room?.slug === slug) : POSTS
+    const scoped = listPosts(slug)
     const PER = 2
     const start = (page - 1) * PER
     const slice = scoped.slice(start, start + PER)
@@ -320,9 +427,21 @@ export async function handleCommunityApi(req, res, pathname) {
 
   const postMatch = new RegExp('^/posts/([^/]+)$').exec(route)
   if (postMatch && req.method === 'GET') {
-    const post = postById(decodeURIComponent(postMatch[1]))
+    const post = getPost(decodeURIComponent(postMatch[1]))
     if (!post) { json(res, 404, { error: 'That post no longer exists.' }); return true }
-    json(res, 200, { post, comments: commentsFor(post.id), __fixture: true })
+    json(res, 200, { post, comments: commentsOf(post.id), __fixture: true })
+    return true
+  }
+  if (postMatch && req.method === 'PATCH') {
+    const out = patchPost(decodeURIComponent(postMatch[1]), await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+  if (postMatch && req.method === 'DELETE') {
+    const out = deletePost(decodeURIComponent(postMatch[1]))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, { ok: true, __fixture: true })
     return true
   }
 

@@ -38,7 +38,7 @@ substituted its API in three parts.
 | **2** | Serve it on the `community.*` host | done | `e7e0054` |
 | **3a** | Substituted API — session and auth | done | `e3475ea` |
 | **3b** | Read surface, 18 endpoints, plus the demo seed | done | `074aa62` `e10bcb4` |
-| **3c** | **Write surface — 10 endpoints** | **not started** | — |
+| **3c** | Write surface — 13 endpoints, persisted | **done** | this commit |
 | **3d** | Discord and LiveKit | **deliberately not done** | — |
 
 **3d is a decision, not an omission.** You cannot reproduce somebody else's Discord bot or
@@ -61,7 +61,7 @@ Two things sit **outside** this numbering and are not stage work:
 | --- | --- | --- | --- |
 | Member (`/api/*`) | 85 samples | login/register synthesised | — |
 | Admin (`/api/admin/*`) | **4**, all `public_*` | ~113 paths backed by real routes | **10 endpoints** |
-| Community (`/api/community/*`) | 2 public | 18 endpoints + demo dataset | 4 reads; writes not built |
+| Community (`/api/community/*`) | 2 public | 18 reads + 13 writes + demo dataset | 4 reads |
 
 There is **no database**. Persistence is JSON overlays written atomically and
 re-validated on load: `admin-products.json`, `promo-codes.json`, `newsletter.json`,
@@ -109,26 +109,22 @@ This is the largest remaining gap in the community surface and the one most like
 mistaken for a bug. See **`community/DEMO.md`** for how to run the forum, which accounts to
 sign in with, and what the demo seed contains.
 
-**A refused write is SILENT** — measured, not assumed. Clicking react, Vote, or Mark all
-as read fires the documented request, receives `501`, and produces **zero console errors,
-no toast, and no visible change**, because the client's handlers use `.catch(() => {})`.
-That is the difference between "the button is broken" and "the button worked and reported
-nothing", and it is why a click appears to do nothing rather than surfacing a refusal.
+**Writes are implemented and persisted** (stage 3c, 13 endpoints). Creating posts,
+replying, reacting, voting, RSVPs, reports, marking read, editing and deleting all work,
+and survive a server restart. Content lives in `community-content.json`, written
+atomically and **re-validated on load** — a hand-edited file cannot inject a reaction count
+of -5 or a post with no room, and anything repaired is reported at boot.
 
-Measured by driving the app over CDP with response capture:
+Two response shapes are easy to get wrong, and both fail quietly rather than loudly:
 
-```
-Load more        GET /posts + /posts/participants   200   <- works
-react 👍         POST /reactions                    501
-poll Vote        POST /polls/:id/vote               501
-Mark all as read POST /read-all                     501
-Cards/Topics     (no request — pure client state)
-React picker     (no request until a reaction is picked)
-```
+- **`POST /reactions` must return `{reacted}`.** The caller treats a null as failure, so a
+  200 without that field shows "Couldn't react" despite having stored the reaction.
+- **`/polls/:id/vote` and `PUT /events/:id/rsvp` return the WHOLE updated object**, which
+  the client drops straight into state. A partial body leaves the UI stale.
 
-21 interactive controls render on `/`, all enabled, and **each one fires its documented
-request** — none is unwired. Nine write endpoints answer `501`; the reads all answer `200`.
-The acceptance test for Stage 3c is the harness above: click each control, require a 200.
+Before 3c, a refused write was **silent**: the request fired, got `501`, and produced zero
+console errors, no toast and no visible change, because the handlers use `.catch(() => {})`.
+That is why a click appeared to do nothing rather than surfacing a refusal.
 
 ## Things that were wrong and are now documented
 
@@ -176,9 +172,6 @@ graph is one-way.
    empty shapes from a route tour.
 2. **Community's four unimplemented reads** — `/calendar`, `/mod/reports`, `/connections`,
    `/gifs`. Outside the stage numbering; see the stage table above.
-3. **Community writes (Stage 3c)** — posts, replies, reactions, polls, RSVPs. Needs
-   persistence following the overlay pattern. The largest remaining gap, and the one that
-   changes what the demo is rather than filling in an edge.
 4. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
    `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
    exchanges it at `/api/community/auth/handoff`. Both ends exist locally.

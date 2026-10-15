@@ -29,3 +29,6 @@ newsletter.json
 
 # Images uploaded through the community demo. Authored at runtime, recreated on demand.
 community/uploads/
+
+# Community content written through the write API. Recreated from the demo seed.
+community-content.json
