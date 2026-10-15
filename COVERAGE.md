@@ -187,14 +187,15 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **The 10 admin reads above** — each a thin handler over existing data. Removes the last
-   empty shapes from a route tour.
-2. **Community's four unimplemented reads** — `/calendar`, `/mod/reports`, `/connections`,
-   `/gifs`. Outside the stage numbering; see the stage table above.
-4. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
+1. **Community's four unimplemented reads** — `/calendar`, `/mod/reports`, `/connections`,
+   `/gifs`. `/mod/reports` is the visible one: it is the first tab of `/mod` and its
+   refusal renders as an error line there. Outside the stage numbering.
+2. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
    `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
    exchanges it at `/api/community/auth/handoff`. Both ends exist locally.
-5. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
+3. **The 10 admin reads** — each a thin handler over existing data. Removes the last
+   hollow shapes from a member-app route tour.
+4. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
 
 **Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and
 always will.
