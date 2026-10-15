@@ -29,8 +29,32 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FILE = join(HERE, 'community-content.json')
 
-/** The signed-in fixture identity. Writes are attributed to this member. */
+/**
+ * The identity writes are attributed to.
+ *
+ * This is NOT a constant. The role checks downstream have to distinguish an ADMIN from a
+ * MEMBER, so the request handler sets it from the session before any store call. It starts
+ * as the fixture admin only so a direct call in a test still works.
+ */
 export const ME = ADA
+
+let actor = ADA
+
+/**
+ * Point the store at the signed-in member for this request.
+ *
+ * Called by the API handler as soon as it has a session, and reset afterwards, because
+ * Node serves requests on one thread and a store that remembers the last caller would
+ * attribute the next anonymous write to them.
+ */
+export function setActor(member) {
+  actor = member ?? ADA
+  return actor
+}
+
+export const whoami = () => actor
+const isStaff = () => actor.role === 'ADMIN' || actor.role === 'MODERATOR'
+const isAdmin = () => actor.role === 'ADMIN'
 
 const clone = (v) => JSON.parse(JSON.stringify(v))
 const iso = () => new Date().toISOString()
@@ -51,6 +75,14 @@ const seed = () => ({
   /** postId/commentId -> true, for the unread calculation */
   read: {},
   reports: [],
+  /**
+   * Discord integration SETTINGS. There is no Discord here, so these record what an admin
+   * configured — a bot token, an SSO client secret, chat bridges — and report the
+   * connection as unreachable. Nothing pretends a bot is online.
+   */
+  discord: { botToken: null, loginSecret: null, clientId: null, updatedAt: null },
+  connections: [],
+  connectionSeq: 1,
   seq: 1,
 })
 
@@ -159,8 +191,28 @@ function validate(raw) {
   const reports = (isArr(raw.reports) ? raw.reports : []).filter((r) => r && isStr(r.id))
   const seq = isNum(raw.seq) && raw.seq > 0 ? Math.floor(raw.seq) : 1
 
+  const rawDiscord = raw.discord && typeof raw.discord === 'object' ? raw.discord : {}
+  const discord = {
+    botToken: isStr(rawDiscord.botToken) && rawDiscord.botToken ? rawDiscord.botToken : null,
+    loginSecret: isStr(rawDiscord.loginSecret) && rawDiscord.loginSecret ? rawDiscord.loginSecret : null,
+    clientId: isStr(rawDiscord.clientId) && rawDiscord.clientId ? rawDiscord.clientId : null,
+    updatedAt: isStr(rawDiscord.updatedAt) ? rawDiscord.updatedAt : null,
+  }
+
+  const connections = (isArr(raw.connections) ? raw.connections : []).filter((c) => {
+    if (!c || !isStr(c.id) || !isStr(c.label)) { note('dropped a connection with no id/label'); return false }
+    if (!isStr(c.secret) || !c.secret) { note(`connection ${c.id}: no secret, dropped`); return false }
+    c.platform = isStr(c.platform) ? c.platform : 'DISCORD'
+    c.room = c.room && isStr(c.room.id) ? { id: c.room.id, name: isStr(c.room.name) ? c.room.name : '', slug: isStr(c.room.slug) ? c.room.slug : '' } : null
+    return true
+  })
+  const connectionSeq = isNum(raw.connectionSeq) && raw.connectionSeq > 0 ? Math.floor(raw.connectionSeq) : 1
+
   return {
-    state: { seedVersion: 2, posts, comments, events, notifications, reactions, pollVotes, read, reports, seq },
+    state: {
+      seedVersion: 2, posts, comments, events, notifications, reactions, pollVotes,
+      read, reports, discord, connections, connectionSeq, seq,
+    },
     problems,
   }
 }
@@ -287,7 +339,7 @@ export function createPost(body) {
   const id = nextId('post')
   const post = {
     id, title: title || text.slice(0, 60), body: text,
-    author: ME, createdAt: iso(), editedAt: null,
+    author: actor, createdAt: iso(), editedAt: null,
     room: { slug: room.slug, emoji: room.emoji, name: room.name },
     pinned: false, locked: false, isNew: false, newComments: 0, truncated: false,
     images: isArr(body.images) ? body.images.filter(isStr) : [],
@@ -327,7 +379,7 @@ export function patchPost(id, body) {
 export function deletePost(id) {
   const i = state.posts.findIndex((p) => p.id === id)
   if (i < 0) return { error: 'That post no longer exists.' }
-  if (state.posts[i].author?.id !== ME.id && ME.role !== 'ADMIN') {
+  if (state.posts[i].author?.id !== actor.id && !isAdmin()) {
     return { error: 'You can only delete your own posts.' }
   }
   state.posts.splice(i, 1)
@@ -355,7 +407,7 @@ export function addComment(postId, body) {
   }
 
   const comment = {
-    id: nextId('c'), postId, parentId, author: ME, member: ME, body: text,
+    id: nextId('c'), postId, parentId, author: actor, member: actor, body: text,
     images, files, createdAt: iso(), editedAt: null,
     reactions: {}, myReactions: [], __fixture: true,
   }
@@ -370,7 +422,7 @@ export function patchComment(id, body) {
   for (const list of Object.values(state.comments)) {
     const c = list.find((x) => x.id === id)
     if (!c) continue
-    if (c.author?.id !== ME.id && ME.role !== 'ADMIN') return { error: 'You can only edit your own comments.' }
+    if (c.author?.id !== actor.id && !isAdmin()) return { error: 'You can only edit your own comments.' }
     if (isStr(body.body)) c.body = body.body.trim()
     c.editedAt = iso()
     persist()
@@ -383,7 +435,7 @@ export function deleteComment(id) {
   for (const [postId, list] of Object.entries(state.comments)) {
     const i = list.findIndex((x) => x.id === id)
     if (i < 0) continue
-    if (list[i].author?.id !== ME.id && ME.role !== 'ADMIN') return { error: 'You can only delete your own comments.' }
+    if (list[i].author?.id !== actor.id && !isAdmin()) return { error: 'You can only delete your own comments.' }
     list.splice(i, 1)
     if (!list.length) delete state.comments[postId]
     persist()
@@ -428,7 +480,7 @@ export function votePoll(pollId, body) {
 export function closePoll(pollId) {
   const found = findPoll(pollId)
   if (!found) return { error: 'That poll no longer exists.' }
-  if (ME.role !== 'ADMIN' && ME.role !== 'MODERATOR') return { error: 'Only staff can close a poll.' }
+  if (!isStaff()) return { error: 'Only staff can close a poll.' }
   found.poll.closed = true
   state.pollVotes[pollId] = { optionIds: state.pollVotes[pollId]?.optionIds ?? [], closed: true }
   persist()
@@ -470,7 +522,7 @@ export function createEvent(body) {
     description: isStr(body.description) && body.description.trim() ? body.description.trim() : null,
     kind, status: 'SCHEDULED', startsAt, coverUrl: isStr(body.coverUrl) ? body.coverUrl : null,
     durationMin: isNum(Number(body.durationMin)) ? Number(body.durationMin) : null,
-    host: ME,
+    host: actor,
     speakers: isArr(body.speakerIds)
       ? body.speakerIds.map((id) => MEMBERS.find((m) => m.id === id)).filter(Boolean).map((m) => ({ ...m }))
       : [],
@@ -511,7 +563,7 @@ export function fileReport(body) {
     id: nextId('report'),
     postId: isStr(body.postId) ? body.postId : null,
     commentId: isStr(body.commentId) ? body.commentId : null,
-    reason, reporterId: ME.id, status: 'OPEN', createdAt: iso(), __fixture: true,
+    reason, reporterId: actor.id, status: 'OPEN', createdAt: iso(), __fixture: true,
   }
   state.reports.push(report)
   persist()
@@ -519,6 +571,155 @@ export function fileReport(body) {
 }
 
 export const listReports = () => state.reports
+
+/* --------------------------------------------------------------- discord --- */
+/**
+ * The bot's status is OBSERVED, not aspirational.
+ *
+ * There is no Discord gateway to connect to here, so a saved token cannot produce a live
+ * bot. Reporting `connected` would be a lie the UI then repeats in green, so a stored
+ * token reports `error` with the reason attached, and the page renders "Not connected"
+ * next to it. The token really is stored — that part is not a fiction.
+ */
+const NO_GATEWAY = 'Saved locally, but there is no Discord gateway here to connect to.'
+
+const botState = () => (state.discord.botToken
+  ? {
+    status: 'error',
+    label: 'Not connected',
+    detail: NO_GATEWAY,
+    configuredAt: state.discord.updatedAt,
+    // The token itself is never returned. A UI that can read a secret back is a UI that
+    // can leak it through a screenshot; masking is what the real thing does too.
+    tokenPreview: `${state.discord.botToken.slice(0, 6)}…`,
+  }
+  : { status: 'off', label: 'Off', detail: 'No bot token saved.', tokenPreview: null })
+
+const loginState = () => ({
+  configured: !!(state.discord.loginSecret && state.discord.clientId),
+  // Read back by the setup instructions on the page.
+  clientId: state.discord.clientId,
+  redirectUri: '/api/community/auth/discord/callback',
+  // Never the secret.
+  secretSaved: !!state.discord.loginSecret,
+})
+
+export const getDiscord = () => ({ bot: botState(), login: loginState() })
+
+export function setBotToken(token) {
+  const t = isStr(token) ? token.trim() : ''
+  if (t.length < 20) return { error: 'That does not look like a bot token.' }
+  state.discord.botToken = t
+  state.discord.updatedAt = iso()
+  persist()
+  return { bot: botState() }
+}
+
+export function clearBotToken() {
+  state.discord.botToken = null
+  state.discord.updatedAt = iso()
+  persist()
+  return { bot: botState() }
+}
+
+export function setDiscordLogin(body) {
+  const secret = isStr(body.secret) ? body.secret.trim() : ''
+  const clientId = isStr(body.clientId) ? body.clientId.trim() : state.discord.clientId
+  if (secret) state.discord.loginSecret = secret
+  if (clientId) state.discord.clientId = clientId
+  if (!state.discord.loginSecret || !state.discord.clientId) {
+    // The form offers a secret field plus a separate client id; without both, Discord
+    // cannot redirect back, so say which is missing rather than silently half-enabling.
+    return { error: !state.discord.clientId ? 'A Discord client ID is required.' : 'A client secret is required.' }
+  }
+  state.discord.updatedAt = iso()
+  persist()
+  return { login: loginState() }
+}
+
+export function unlinkDiscord() {
+  // The fixture session is not Discord-linked, so this is a no-op that reports the
+  // resulting member rather than claiming an unlink that never happened.
+  return { member: actor }
+}
+
+/* ----------------------------------------------------------- connections --- */
+const connView = (c) => ({
+  id: c.id, platform: c.platform, label: c.label, room: c.room,
+  secretPreview: `${c.secret.slice(0, 4)}…`,
+  // Same reasoning as the bot: a stored bridge is not a working bridge.
+  status: 'error',
+  detail: NO_GATEWAY,
+  createdAt: c.createdAt,
+})
+
+export const listConnections = () => ({ connections: state.connections.map(connView) })
+
+export function createConnection(body) {
+  const label = isStr(body.label) ? body.label.trim() : ''
+  const secret = isStr(body.secret) ? body.secret.trim() : ''
+  if (!label) return { error: 'Give the connection a name.' }
+  if (secret.length < 8) return { error: 'That does not look like a valid secret.' }
+  const roomId = isStr(body.roomId) && body.roomId ? body.roomId : null
+  const room = roomId ? ROOMS.find((r) => r.id === roomId) : null
+  if (roomId && !room) return { error: 'Unknown room.' }
+  const conn = {
+    id: `conn-${(state.connectionSeq++).toString(36)}${Date.now().toString(36).slice(-3)}`,
+    platform: 'DISCORD', label, secret,
+    room: room ? { id: room.id, name: room.name, slug: room.slug } : null,
+    createdAt: iso(),
+  }
+  state.connections.push(conn)
+  persist()
+  return { connection: connView(conn) }
+}
+
+export function updateConnection(id, body) {
+  const c = state.connections.find((x) => x.id === id)
+  if (!c) return { error: 'That connection no longer exists.' }
+  if (isStr(body.label) && body.label.trim()) c.label = body.label.trim()
+  if (isStr(body.secret) && body.secret.trim()) c.secret = body.secret.trim()
+  if (body.roomId !== undefined) {
+    const room = body.roomId ? ROOMS.find((r) => r.id === body.roomId) : null
+    if (body.roomId && !room) return { error: 'Unknown room.' }
+    c.room = room ? { id: room.id, name: room.name, slug: room.slug } : null
+  }
+  persist()
+  return { connection: connView(c) }
+}
+
+export function deleteConnection(id) {
+  const i = state.connections.findIndex((x) => x.id === id)
+  if (i < 0) return { error: 'That connection no longer exists.' }
+  state.connections.splice(i, 1)
+  persist()
+  return { ok: true }
+}
+
+/* ------------------------------------------------------------- moderation --- */
+
+/**
+ * The moderation member list. Same member shape as `/members`, plus the search the page
+ * debounces into a query param. Kept here rather than reusing MEMBERS directly so a
+ * future role change is reflected without touching the seed.
+ */
+export function modMembers(search) {
+  const q = isStr(search) ? search.trim().toLowerCase() : ''
+  const list = MEMBERS
+    .filter((m) => !q
+      || m.displayName.toLowerCase().includes(q)
+      || m.username.toLowerCase().includes(q)
+      || m.email.toLowerCase().includes(q))
+    .map((m) => ({
+      id: m.id, displayName: m.displayName, username: m.username, email: m.email,
+      avatarUrl: m.avatarUrl, role: m.role, tier: m.tier,
+      emailVerified: m.emailVerified, mutedUntil: m.mutedUntil,
+      bio: m.bio, joinedAt: m.joinedAt, viaDiscord: !!m.viaDiscord,
+    }))
+  return { members: list }
+}
+
+export const modRooms = () => ({ rooms: ROOMS.map((r) => ({ ...r })) })
 
 /* --------------------------------------------------------------- counters --- */
 
@@ -563,7 +764,8 @@ export const postsByRoom = (slug) => listPosts(slug)
 console.log(
   `  [community] content ${existsSync(FILE) ? 'restored' : 'seeded'}`
   + ` — ${state.posts.length} posts, ${Object.values(state.comments).reduce((a, l) => a + l.length, 0)} comments,`
-  + ` ${state.reports.length} report(s)`,
+  + ` ${state.reports.length} report(s)`
+  + `, discord ${state.discord.botToken ? 'token set' : 'unconfigured'}, ${state.connections.length} connection(s)`,
 )
 
 export const stats = () => ({

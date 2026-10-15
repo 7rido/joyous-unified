@@ -39,18 +39,37 @@ substituted its API in three parts.
 | **3a** | Substituted API — session and auth | done | `e3475ea` |
 | **3b** | Read surface, 18 endpoints, plus the demo seed | done | `074aa62` `e10bcb4` |
 | **3c** | Write surface — 13 endpoints, persisted | **done** | this commit |
-| **3d** | Discord and LiveKit | **deliberately not done** | — |
+| **3d** | Discord settings real, connection not | **partial** | this commit |
 
-**3d is a decision, not an omission.** You cannot reproduce somebody else's Discord bot or
-a LiveKit SFU locally, so those paths answer `503 __simulated` and name the missing
-integration. Faking them would be worse than refusing — a fake chat room is
-indistinguishable from an empty one.
+**3d is split, and the split is the point.** You cannot reproduce somebody else's Discord
+bot or a LiveKit SFU locally, so anything requiring an actual conversation with those
+services still answers `503 __simulated` and names the missing integration. What IS real
+is the configuration surface:
+
+```
+real, persists        /mod/discord-bot (GET, PUT, DELETE)   /mod/discord-login (PUT)
+                      /mod/connections (GET, POST, PATCH, DELETE)
+                      /auth/discord/unlink
+still refuses         /mod/connections/:id/test    needs Discord to verify a secret
+                      /auth/discord/start          OAuth redirect; 302s back to /settings
+                      /live, /live/moderate        needs a LiveKit SFU
+```
+
+**Nothing reports itself as connected.** A saved bot token returns `status: 'error'` with
+the reason attached, not `connected`, because a stored token is not a live bot and a green
+dot would be a lie the UI then repeats. Secrets are stored but never read back — only a
+masked preview — so a screenshot cannot leak one.
+
+The earlier blanket `503` was worse than it looked: the client could not tell "no Discord
+configured" from "this endpoint is broken", so the page's own honest copy —
+*"Signing in with Discord isn't switched on yet"* — was unreachable.
 
 Two things sit **outside** this numbering and are not stage work:
 
 - **Four unbuilt community reads** — `/calendar`, `/mod/reports`, `/connections`, `/gifs`.
-  Deferred while the reads the main screens demanded were built. `/calendar` is the
-  visible one: a nav item with a real screen behind it.
+  `/calendar` is a nav item with a real screen behind it, and **`/mod/reports` is the
+  first tab of `/mod`**, so its refusal currently renders as a raw error line at the top of
+  that page. Both are visible defects rather than hidden gaps.
 - **The `/sso` handoff**, wired at both ends but never exercised. The member app POSTs
   `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
   exchanges it at `/auth/handoff`. All three pieces exist locally.

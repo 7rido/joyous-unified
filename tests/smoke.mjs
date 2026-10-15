@@ -1677,15 +1677,99 @@ if (newPostId) {
     `status=${removed.status}`)
 }
 
+// --- Discord settings are real, the CONNECTION is not (stage 3d) ---------
+// The config surface persists; nothing reports itself as connected, because there is no
+// Discord gateway here. The alternative (503 for the whole surface) stopped the page
+// rendering its own "isn't switched on yet" copy.
+const bot0 = await get('/api/community/mod/discord-bot', jar)
+check('/mod/discord-bot reports an unconfigured bot as `off`, not an error',
+  bot0.status === 200 && bot0.body?.bot?.status === 'off',
+  `status=${bot0.status} bot.status=${bot0.body?.bot?.status}`)
+check('the setup instructions can read the redirect URI the client must register',
+  typeof bot0.body?.login?.redirectUri === 'string' && bot0.body.login.configured === false,
+  JSON.stringify(bot0.body?.login))
+
+const TOKEN = 'MTIzNDU2Nzg5MDEyMzQ1Njc4OTAuGHIJ.klmnopqrstuvwx'
+const botSet = await put('/api/community/mod/discord-bot', { token: TOKEN }, jar)
+check('a saved bot token is stored', botSet.status === 200 && !!botSet.body?.bot?.tokenPreview,
+  `status=${botSet.status}`)
+// The whole point: a stored token must NOT report a live bot.
+check('a saved token does NOT report the bot as connected',
+  botSet.body?.bot?.status !== 'connected',
+  `status=${botSet.body?.bot?.status}`)
+check('the token itself is never returned',
+  !JSON.stringify(botSet.body).includes(TOKEN), 'secret echoed back')
+check('a token that is obviously too short is refused',
+  (await put('/api/community/mod/discord-bot', { token: 'x' }, jar)).status === 400, 'short token')
+
+const conn = await post('/api/community/mod/connections',
+  { platform: 'DISCORD', label: 'smoke bridge', secret: 'abcdef123456' }, jar)
+check('a chat bridge can be created and is stored',
+  conn.status === 201 && conn.body?.connection?.id != null, `status=${conn.status}`)
+check('a stored bridge does NOT report itself as connected',
+  conn.body?.connection?.status !== 'connected',
+  `status=${conn.body?.connection?.status}`)
+check('a bridge secret is never returned',
+  !JSON.stringify(conn.body).includes('abcdef123456'), 'secret echoed back')
+const connId = conn.body?.connection?.id
+if (connId) {
+  check('a connection can be deleted again',
+    (await del(`/api/community/mod/connections/${connId}`, jar)).status === 200, 'delete')
+}
+
+// --- the role gate, which was silently wrong -----------------------------
+// Every check here compared against a constant fixture admin, so ALL of them passed for
+// everyone — including requests carrying no session. Reads bypassed the session guard
+// entirely, since it only covered non-GET. These assertions are why that was caught.
+const anonBot = await get('/api/community/mod/discord-bot')
+check('an anonymous request cannot read the Discord settings', anonBot.status === 403,
+  `status=${anonBot.status}`)
+check('an anonymous request cannot read the connections', 
+  (await get('/api/community/mod/connections')).status === 403, 'connections')
+check('an anonymous write is still 401, not 403',
+  (await post('/api/community/posts', { roomId: 'room-general', title: 'x' })).status === 401, 'posts')
+
+const memberSession = await post('/api/community/auth/login',
+  { email: 'chen@example.com', password: 'anything' })
+const memberJar = {
+  headers: { Cookie: `joyous_community_sid=${/joyous_community_sid=([^;]+)/.exec(memberSession.setCookie ?? '')?.[1] ?? ''}` },
+}
+check('a signed-in MEMBER cannot read the Discord settings',
+  (await get(`/api/community/mod/discord-bot`, memberJar)).status === 403, 'member read')
+check('a signed-in MEMBER cannot manage connections',
+  (await get('/api/community/mod/connections', memberJar)).status === 403, 'member connections')
+
+// Attribution must follow the SESSION, not a fixture identity.
+const chenPost = await post('/api/community/posts',
+  { roomId: 'room-general', title: 'attribution check', body: 'x' }, memberJar)
+check('a post written by a MEMBER is attributed to that member',
+  chenPost.body?.post?.author?.id === 'comm-3' && chenPost.body?.post?.author?.role === 'MEMBER',
+  `author=${JSON.stringify(chenPost.body?.post?.author?.id)}/${chenPost.body?.post?.author?.role}`)
+check("a MEMBER cannot delete another member's post",
+  (await del(`/api/community/posts/post-1`, memberJar)).status === 400, 'cross-owner delete')
+if (chenPost.body?.post?.id) await del(`/api/community/posts/${chenPost.body.post.id}`, memberJar)
+
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')
 check('LiveKit-dependent endpoints refuse rather than fake success',
   live.status === 503 && live.body?.__simulated === true,
   `HTTP ${live.status} integration=${live.body?.integration}`)
-const discord = await post('/api/community/auth/discord/unlink', {})
-check('Discord-dependent endpoints refuse rather than fake success',
-  discord.status === 503 && discord.body?.__simulated === true,
-  `HTTP ${discord.status} integration=${discord.body?.integration}`)
+// /auth/discord/unlink is NOT asserted here any more: it returns `{member}` legitimately,
+// because recording that an account is not Discord-linked needs no Discord. Asserting that
+// it 503'd was asserting the old blanket refusal, which stage 3d replaced on purpose.
+//
+// What must still refuse is anything requiring an actual conversation with Discord.
+const connTest = await post('/api/community/mod/connections/conn-nope/test', {}, jar)
+check('testing a connection refuses rather than faking a successful test',
+  connTest.status === 503 && connTest.body?.__simulated === true,
+  `HTTP ${connTest.status} integration=${connTest.body?.integration}`)
+// The OAuth start is a full-page navigation, so a 503 body would render as raw JSON in
+// the browser. It must redirect back to a page with a marker the client understands.
+const oauth = await fetch(`${BASE}/api/community/auth/discord/start`, { redirect: 'manual' })
+const oauthLoc = oauth.headers.get('location') ?? ''
+check('the Discord OAuth start redirects instead of dumping JSON at the browser',
+  oauth.status === 302 && oauthLoc.includes('discord='),
+  `HTTP ${oauth.status} location=${oauthLoc}`)
 
 assertAllPhasesRan()
 

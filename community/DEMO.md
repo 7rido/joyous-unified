@@ -59,8 +59,15 @@ DELETE), `reactions`, `polls/:id/vote`, `polls/:id/close`, `events` (POST),
 `events/:id/rsvp`, `reports`, `read-all`, `notifications/read`, `uploads`, plus
 `auth/login`, `auth/logout`, `auth/signup`, `auth/handoff`.
 
-Still refusing: `calendar`, `mod/reports`, `connections`, `gifs` → 501.
-`live/*`, `auth/discord/*`, `mod/discord*` → 503 simulated.
+Moderation: `mod/members` (with `?search=`), `mod/rooms`, `mod/discord-bot`,
+`mod/discord-login`, `mod/connections` (GET, POST, PATCH, DELETE), `auth/discord/unlink`.
+
+Still refusing: `calendar`, `mod/reports`, `connections`, `gifs` → 501. Note
+`mod/reports` is the **first tab of `/mod`**, so its refusal shows as an error line there.
+
+`mod/connections/:id/test`, `auth/discord/start`, `live/*` → 503 simulated: they need an
+actual Discord or LiveKit connection. Discord and connection *settings* are real and
+persist — but nothing reports itself as connected, because nothing here can connect.
 
 **Writes work.** Posting, replying, reacting, voting in polls, closing polls, RSVPs,
 creating events, reporting, marking read, and editing or deleting your own posts and

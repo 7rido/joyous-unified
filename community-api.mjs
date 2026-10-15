@@ -39,7 +39,10 @@ import {
   listPosts, getPost, commentsOf, createPost, patchPost, deletePost,
   addComment, patchComment, deleteComment, toggleReaction, votePoll, closePoll,
   listEvents, rsvp, createEvent, markRead, markNotificationsRead, listNotifications,
-  fileReport, unreadState, unreadCount, overview, ME, stats,
+  fileReport, unreadState, unreadCount, overview, ME, stats, setActor,
+  getDiscord, setBotToken, clearBotToken, setDiscordLogin, unlinkDiscord,
+  listConnections, createConnection, updateConnection, deleteConnection,
+  modMembers, modRooms,
 } from './community-store.mjs'
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -262,10 +265,20 @@ export async function handleCommunityApi(req, res, pathname) {
     return true
   }
 
+  // --- who is acting -----------------------------------------------------
+  // Set before ANY store call, because the store attributes posts, comments, reports and
+  // role checks to this member. Reading `ME.role` instead (a constant fixture admin) made
+  // every role check pass for everyone, including requests with no session at all.
+  const session = sessionOf(req)
+  setActor(session?.member ?? null)
+  const role = session?.member?.role ?? null
+  const isStaff = role === 'ADMIN' || role === 'MODERATOR'
+  const isAdmin = role === 'ADMIN'
+
   // --- writes need a session ---------------------------------------------
   // The client surfaces a 401 as an error toast. /auth/* is handled above; every other
   // non-GET in this namespace is a mutation and is attributed to the signed-in member.
-  if (req.method !== 'GET' && !route.startsWith('/auth/') && !sessionOf(req)) {
+  if (req.method !== 'GET' && !route.startsWith('/auth/') && !session) {
     json(res, 401, { error: 'Please sign in.' })
     return true
   }
@@ -445,17 +458,122 @@ export async function handleCommunityApi(req, res, pathname) {
     return true
   }
 
+  // --- moderation reads -------------------------------------------------
+  // The /mod page is a four-tab strip: Reports, Members, Rooms, Connections. All four
+  // render their own error state, but a 501 makes each look broken rather than empty.
+  if (route === '/mod/members' && req.method === 'GET') {
+    if (!isStaff) { json(res, 403, { error: 'Moderators only.' }); return true }
+    const search = new URL(req.url ?? '/', 'http://x').searchParams.get('search')
+    json(res, 200, { ...modMembers(search), __fixture: true })
+    return true
+  }
+
+  if (route === '/mod/rooms' && req.method === 'GET') {
+    if (!isAdmin) { json(res, 403, { error: 'Admins manage rooms.' }); return true }
+    json(res, 200, { ...modRooms(), __fixture: true })
+    return true
+  }
+
+  // --- Discord: the SETTINGS are real, the CONNECTION is not ------------
+  // An admin can genuinely save a bot token, an SSO client secret and chat-bridge
+  // records; all of that persists. What cannot exist here is a Discord gateway, so
+  // nothing reports itself as connected — the stored token reports `error` with the
+  // reason attached, and the page renders "Not connected" beside it.
+  //
+  // The alternative, returning 503 for the whole surface, was worse: the client cannot
+  // tell "no Discord configured" from "this endpoint is broken", so the page could not
+  // render its own "isn't switched on yet" copy.
+
+  if (route === '/mod/discord-bot') {
+    if (!isAdmin) { json(res, 403, { error: 'Admins only.' }); return true }
+    if (req.method === 'GET') { json(res, 200, { ...getDiscord(), __fixture: true }); return true }
+    if (req.method === 'PUT') {
+      const out = setBotToken((await readBody(req)).token)
+      if (out.error) { json(res, 400, out); return true }
+      console.log('  [community] discord bot token stored (local only — no gateway)')
+      json(res, 200, out)
+      return true
+    }
+    if (req.method === 'DELETE') {
+      console.log('  [community] discord bot token removed')
+      json(res, 200, clearBotToken())
+      return true
+    }
+  }
+
+  if (route === '/mod/discord-login' && req.method === 'PUT') {
+    if (!isAdmin) { json(res, 403, { error: 'Admins only.' }); return true }
+    const out = setDiscordLogin(await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
+    return true
+  }
+
+  if (route === '/auth/discord/unlink' && req.method === 'POST') {
+    json(res, 200, { ...unlinkDiscord(), __fixture: true })
+    return true
+  }
+
+  if (route === '/mod/connections' && req.method === 'GET') {
+    if (!isAdmin) { json(res, 403, { error: 'Admins manage connections.' }); return true }
+    json(res, 200, { ...listConnections(), __fixture: true })
+    return true
+  }
+  if (route === '/mod/connections' && req.method === 'POST') {
+    if (!isAdmin) { json(res, 403, { error: 'Admins manage connections.' }); return true }
+    const out = createConnection(await readBody(req))
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 201, out)
+    return true
+  }
+  const connMatch = new RegExp('^/mod/connections/([^/]+)$').exec(route)
+  if (connMatch) {
+    if (!isAdmin) { json(res, 403, { error: 'Admins manage connections.' }); return true }
+    const id = decodeURIComponent(connMatch[1])
+    if (req.method === 'PATCH') {
+      const out = updateConnection(id, await readBody(req))
+      if (out.error) { json(res, 400, out); return true }
+      json(res, 200, out)
+      return true
+    }
+    if (req.method === 'DELETE') {
+      const out = deleteConnection(id)
+      if (out.error) { json(res, 400, out); return true }
+      json(res, 200, { ok: true, __fixture: true })
+      return true
+    }
+  }
+
   // --- deliberately absent ---------------------------------------------
-  // Discord is a real external service and LiveKit is a real media server. Both are
-  // reachable in the UI and neither can be honoured here, so they say so explicitly
-  // instead of returning a shape that pretends they worked.
-  if (route.startsWith('/auth/discord') || route.startsWith('/mod/discord') || route === '/mod/discord-login') {
+  // These cannot be honoured here at all, and say which service is missing rather than
+  // returning a shape that implies they worked. A fake chat bridge and a fake video room
+  // are indistinguishable from empty ones.
+
+  // Testing a connection means speaking to Discord. A stored secret is not a working one.
+  const connTest = new RegExp('^/mod/connections/([^/]+)/test$').exec(route)
+  if (connTest && req.method === 'POST') {
     console.log(`  [community] SIMULATED (no Discord here): ${req.method} ${pathname}`)
     json(res, 503, {
-      error: 'Discord is not connected in this local replay.',
-      __simulated: true,
-      integration: 'discord',
+      error: 'Testing a connection needs Discord, which is not reachable from this local '
+        + 'replay. The secret is stored, but nothing here can verify it.',
+      __simulated: true, integration: 'discord',
     })
+    return true
+  }
+
+  /**
+   * The OAuth start is a full-page navigation, not an XHR, so a 503 body would render as
+   * raw JSON in the browser. Redirect back to the page the flow started from with a
+   * marker the client already knows how to display.
+   */
+  if (route === '/auth/discord/start' || route === '/auth/discord/callback') {
+    const configured = getDiscord().login.configured
+    console.log(`  [community] SIMULATED (no Discord here): ${req.method} ${pathname}`)
+    res.writeHead(302, {
+      Location: `/settings#discord=${configured ? 'unreachable' : 'unavailable'}`,
+      'Cache-Control': 'no-store',
+    })
+    res.end()
     return true
   }
   if (route.startsWith('/live')) {
