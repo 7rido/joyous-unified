@@ -3423,18 +3423,98 @@ const server = createServer({
         } catch { /* none */ }
         const row = { ...u, address: addr, addresses: addr ? [addr] : [] }
         const everyone = [row, ...seeded]
-        console.log(`  [admin] /admin/users -> ${everyone.length} account(s) (${seeded.length} seeded, ${seeded.filter((x) => !x.approved).length} awaiting approval)`)
-        sendJson(res, 200, {
-          users: everyone,
+
+        // The page sends page/limit/search/status/sort and BRANCHES on `if (data.pagination)`.
+        // This used to ignore every one of them and always answer page 1 with all rows, so
+        // the Cohort dropdown filtered nothing: picking "Not yet reviewed" showed the whole
+        // directory. The URL was right and the response was wrong.
+        const q = new URL(req.url ?? '/', 'http://x').searchParams
+        const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : d)
+
+        const search = String(q.get('search') ?? '').trim().toLowerCase()
+        const status = String(q.get('status') ?? 'all')
+        const sort = String(q.get('sort') ?? 'recent')
+        const limit = Math.min(num(q.get('limit'), 25), 200)
+        const page = num(q.get('page'), 1)
+
+        const haystack = (x) => [x.email, x.firstName, x.lastName, x.id, x.phone, x.company]
+          .filter(Boolean).join(' ').toLowerCase()
+
+        // Every value the directory's chips actually send, read off the page:
+        //   All · Active · Awaiting approval · Admins · Standard · VIP · Elite ·
+        //   Unverified · Suspended
+        //
+        // An UNRECOGNISED value is treated as `all`, and that is deliberate rather than
+        // lazy: a filter that silently returns everything looks like a working filter, so
+        // the risk is a new chip appearing and quietly not filtering. The counts below are
+        // computed from the same predicates, so a chip whose count is non-zero but whose
+        // list is empty is visible rather than silent.
+        const isSuspended = (x) => !!(x.suspendedAt || x.suspended === true || x.status === 'SUSPENDED')
+
+        const STATUS_PREDICATES = {
+          all: () => true,
+          // "Active" = a usable account: approved, verified, not suspended.
+          active: (x) => !!x.approved && !!x.emailVerified && !isSuspended(x),
+          pending: (x) => !x.approved,
+          awaiting: (x) => !x.approved,
+          reviewed: (x) => !!x.approved,
+          approved: (x) => !!x.approved,
+          admins: (x) => !!x.isAdmin,
+          admin: (x) => !!x.isAdmin,
+          // The tier chips. `standard` is the absence of a paid tier, which is how the
+          // seed represents a plain account (tier USER or unset).
+          standard: (x) => !x.tier || x.tier === 'USER',
+          user: (x) => !x.tier || x.tier === 'USER',
+          vip: (x) => x.tier === 'VIP',
+          elite: (x) => x.tier === 'ELITE',
+          unverified: (x) => !x.emailVerified,
+          suspended: (x) => isSuspended(x),
+          deleted: (x) => x.deleted === true,
+        }
+        const matchesStatus = STATUS_PREDICATES[status] ?? STATUS_PREDICATES.all
+
+        const filtered = everyone
+          .filter(matchesStatus)
+          .filter((x) => !search || haystack(x).includes(search))
+
+        const nameOf = (x) => `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim().toLowerCase()
+        const sorted = [...filtered]
+        if (sort === 'name') sorted.sort((a, b) => nameOf(a).localeCompare(nameOf(b)))
+        else if (sort === 'oldest') sorted.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))
+        else sorted.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+
+        const start = (page - 1) * limit
+        const slice = sorted.slice(start, start + limit)
+        const pages = Math.max(1, Math.ceil(sorted.length / limit))
+
+        // Counts describe the WHOLE cohort, not the current page or filter — they label the
+        // dropdown, so a filtered count would make the dropdown relabel itself on every
+        // selection.
+        // One entry per chip, from the SAME predicates the list uses — a count that
+        // disagrees with the list it labels is worse than no count.
+        const counts = {
           total: everyone.length,
-          page: 1,
-          pages: 1,
-          counts: {
-            total: everyone.length,
-            pending: everyone.filter((x) => !x.approved).length,
-            elite: everyone.filter((x) => x.tier === 'ELITE').length,
-            vip: everyone.filter((x) => x.tier === 'VIP').length,
-          },
+          all: everyone.length,
+          active: everyone.filter(STATUS_PREDICATES.active).length,
+          pending: everyone.filter(STATUS_PREDICATES.pending).length,
+          reviewed: everyone.filter(STATUS_PREDICATES.reviewed).length,
+          admins: everyone.filter(STATUS_PREDICATES.admins).length,
+          standard: everyone.filter(STATUS_PREDICATES.standard).length,
+          vip: everyone.filter(STATUS_PREDICATES.vip).length,
+          elite: everyone.filter(STATUS_PREDICATES.elite).length,
+          unverified: everyone.filter(STATUS_PREDICATES.unverified).length,
+          suspended: everyone.filter(STATUS_PREDICATES.suspended).length,
+        }
+
+        console.log(`  [admin] /admin/users -> ${slice.length}/${sorted.length} (status=${status}${search ? ` search=${search}` : ''}, page ${page}/${pages})`)
+        sendJson(res, 200, {
+          users: slice,
+          total: sorted.length,
+          page,
+          pages,
+          limit,
+          pagination: { total: sorted.length, page, pages, limit, count: slice.length },
+          counts,
         })
         return
       }

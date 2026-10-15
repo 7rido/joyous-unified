@@ -1912,6 +1912,49 @@ check('the code cannot be redeemed a second time',
   (await post('/api/community/auth/handoff', { code: mint1.body.code })).status === 400,
   'reused')
 
+// --- the customer directory's cohort filter ------------------------------
+// It sent page/limit/search/status/sort and the handler ignored ALL of them, always
+// answering page 1 with every row. Picking "Not yet reviewed" showed the whole directory:
+// the URL was right and the response was wrong, which is why a status-code test missed it.
+const dirAll = await get('/api/admin/users?status=all&limit=50')
+const dirPending = await get('/api/admin/users?status=pending&limit=50')
+const dirReviewed = await get('/api/admin/users?status=reviewed&limit=50')
+check('the directory pages, rather than returning every row regardless',
+  !!dirAll.body?.pagination, `keys: ${Object.keys(dirAll.body || {}).join(', ')}`)
+// The two cohorts must PARTITION. If the filter is ignored both equal the total.
+check('status=pending returns only unapproved accounts',
+  (dirPending.body?.users ?? []).every((u) => !u.approved),
+  `${dirPending.body?.users?.length} rows, ${dirPending.body?.users?.filter((u) => u.approved).length} of them approved`)
+check('status=reviewed returns only approved accounts',
+  (dirReviewed.body?.users ?? []).every((u) => u.approved),
+  `${dirReviewed.body?.users?.length} rows`)
+check('pending and reviewed together account for everyone',
+  (dirPending.body?.pagination?.total ?? 0) + (dirReviewed.body?.pagination?.total ?? 0)
+    === (dirAll.body?.pagination?.total ?? -1),
+  `${dirPending.body?.pagination?.total} + ${dirReviewed.body?.pagination?.total} != ${dirAll.body?.pagination?.total}`)
+// Every chip the page offers must actually filter. An unrecognised value falls back to
+// `all`, so a new chip would silently show everyone — this asserts the ones that exist.
+const chips = ['active', 'pending', 'admins', 'standard', 'vip', 'elite', 'unverified', 'suspended']
+for (const chip of chips) {
+  const res = await get(`/api/admin/users?status=${chip}&limit=50`)
+  const rows = res.body?.users ?? []
+  const count = res.body?.counts?.[chip] ?? 0
+  check(`the "${chip}" chip filters, and its count matches its rows`,
+    res.status === 200 && count === (res.body?.pagination?.total ?? -1) && rows.length <= count,
+    `count=${count} rows=${rows.length} total=${res.body?.pagination?.total}`)
+}
+check('the tier chips partition the directory',
+  (await get('/api/admin/users?status=standard&limit=50')).body?.counts?.standard
+  + (await get('/api/admin/users?status=vip&limit=50')).body?.counts?.vip
+  + (await get('/api/admin/users?status=elite&limit=50')).body?.counts?.elite
+    === dirAll.body?.counts?.total,
+  'standard + vip + elite != total')
+check('search narrows the directory',
+  (await get('/api/admin/users?search=chen&limit=50')).body?.pagination?.total
+    < dirAll.body?.pagination?.total, 'search did not narrow')
+check('limit is honoured',
+  (await get('/api/admin/users?limit=3')).body?.users?.length <= 3, 'limit ignored')
+
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')
 check('LiveKit-dependent endpoints refuse rather than fake success',
