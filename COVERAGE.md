@@ -76,9 +76,30 @@ data"; `501` reads as "not built". Discord and LiveKit are real external service
 refused by name rather than faked.
 
 **Writes are not implemented** — creating posts, replies, reactions, polls and RSVPs.
-The controls render and do nothing. This is the largest remaining gap in the community
-surface and the one most likely to be mistaken for a bug. See **`community/DEMO.md`** for
-how to run the forum, which accounts to sign in with, and what the demo seed contains.
+This is the largest remaining gap in the community surface and the one most likely to be
+mistaken for a bug. See **`community/DEMO.md`** for how to run the forum, which accounts to
+sign in with, and what the demo seed contains.
+
+**A refused write is SILENT** — measured, not assumed. Clicking react, Vote, or Mark all
+as read fires the documented request, receives `501`, and produces **zero console errors,
+no toast, and no visible change**, because the client's handlers use `.catch(() => {})`.
+That is the difference between "the button is broken" and "the button worked and reported
+nothing", and it is why a click appears to do nothing rather than surfacing a refusal.
+
+Measured by driving the app over CDP with response capture:
+
+```
+Load more        GET /posts + /posts/participants   200   <- works
+react 👍         POST /reactions                    501
+poll Vote        POST /polls/:id/vote               501
+Mark all as read POST /read-all                     501
+Cards/Topics     (no request — pure client state)
+React picker     (no request until a reaction is picked)
+```
+
+21 interactive controls render on `/`, all enabled, and **each one fires its documented
+request** — none is unwired. Nine write endpoints answer `501`; the reads all answer `200`.
+The acceptance test for Stage 3c is the harness above: click each control, require a 200.
 
 ## Things that were wrong and are now documented
 

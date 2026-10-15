@@ -58,5 +58,7 @@ Implemented: `auth/me` (GET, PATCH), `auth/login`, `auth/logout`, `auth/signup`,
 Still refusing: `calendar`, `mod/reports`, `connections`, `gifs` → 501.
 `live/*`, `auth/discord/*`, `mod/discord*` → 503 simulated.
 
-Writes (creating posts, replies, reactions, polls, RSVPs) are **not implemented**, so
-those controls are present but inert.
+Writes (creating posts, replies, reactions, polls, RSVPs) are **not implemented**. The
+controls render and fire their requests, but the endpoint answers `501` — and the client
+swallows that silently, so a click produces **no error, no toast and no visible change**.
+`Load more` is the exception: pagination works and fetches the next page.
