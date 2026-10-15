@@ -197,9 +197,8 @@ graph is one-way.
    hollow shapes from a member-app route tour.
 4. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
 
-**Not on this list:** the parts of Discord and LiveKit that need those services running.
-Their *settings* are real and persisted (stage 3d); only the calls that would actually talk
-to Discord or a LiveKit SFU refuse, and those never will be built here.
+**Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and
+always will.
 
 ## Known limits of the harness
 
