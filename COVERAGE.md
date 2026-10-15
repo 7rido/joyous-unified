@@ -66,10 +66,9 @@ configured" from "this endpoint is broken", so the page's own honest copy —
 
 Two things sit **outside** this numbering and are not stage work:
 
-- **Three unbuilt community reads** — `/calendar`, `/connections`, `/gifs`. `/calendar` is
-  a nav item with a real screen behind it, so its refusal is a visible defect rather than a
-  hidden gap. `/mod/reports` was the worst of these — it is the first tab of `/mod`, so its
-  `501` showed as a raw error line on a page an admin opens — and is now implemented.
+- **No community endpoint returns `501` any more.** The last four reads — `/calendar`,
+  `/mod/reports`, `/connections`, `/gifs` — are implemented. What remains is the `/sso`
+  handoff above, which is a flow rather than an endpoint.
 - **The `/sso` handoff**, wired at both ends but never exercised. The member app POSTs
   `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
   exchanges it at `/auth/handoff`. All three pieces exist locally.
@@ -115,9 +114,12 @@ the cheapest remaining work on the admin side.
 ### Community: 501 rather than 200
 
 ```
-/calendar  /connections  /gifs                    -> 501 __notImplemented
-/live, /live/*  auth/discord/*  mod/discord*      -> 503 __simulated
+/live, /live/*                     -> 503 __simulated   (needs a LiveKit SFU)
+/mod/connections/:id/test          -> 503 __simulated   (needs Discord to verify a secret)
+/auth/discord/start, /callback     -> 302 back to /settings with a marker
 ```
+
+Nothing returns `501` any more: the four unbuilt reads are done.
 
 The distinction is deliberate. `200 {}` renders as an empty screen, which reads as "no
 data"; `501` reads as "not built". Discord and LiveKit are real external services and are
@@ -187,15 +189,11 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **Community's three remaining reads** — `/calendar`, `/connections`, `/gifs`.
-   `/mod/reports` is done (the moderation queue), so all four `/mod` tabs now work.
-   `/calendar` is the visible one left: a nav item with a real screen behind it.
-2. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
-   `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
-   exchanges it at `/api/community/auth/handoff`. Both ends exist locally.
-3. **The 10 admin reads** — each a thin handler over existing data. Removes the last
+1. **The `/sso` handoff, end to end** — the only community item left. Everything else is
+   built; see below.
+2. **The 10 admin reads** — each a thin handler over existing data. Removes the last
    hollow shapes from a member-app route tour.
-4. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
+3. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
 
 **Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and
 always will.

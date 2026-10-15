@@ -844,6 +844,12 @@ phase('fallback pages', 'The fallback endpoints a page actually reads')
   // order falls inside it depends on the seed's age and the time of the run. The check
   // passed by luck and started failing after 00:00 UTC — a time bomb, not a regression.
   await clearCart()
+  //
+  // The key MUST be unique per run. With a fixed key the second run replays the first
+  // run's stored response, which carries no `order.id` — so the setup silently did
+  // nothing and the assertion below failed only on a fresh server. A test whose setup can
+  // no-op is a test that lies intermittently.
+  const deliverKey = `smoke-delivered-${Date.now()}`
   const deliverable = (await get('/api/products/catalog')).body.products.find((x) => !x.soldOut)
   if (deliverable) {
     await post('/api/cart', {
@@ -852,13 +858,19 @@ phase('fallback pages', 'The fallback endpoints a page actually reads')
     const fresh = await api('/api/orders/create', {
       method: 'POST',
       body: { addressId: ADDRESS_ID, paymentMethod: 'USDT' },
-      headers: { 'Idempotency-Key': 'smoke-delivered-today' },
+      headers: { 'Idempotency-Key': deliverKey },
     })
     const freshId = fresh.body?.order?.id
+    // Fail LOUDLY if the order could not be created, rather than skipping the walk and
+    // letting a later assertion absorb the blame.
+    check('the counters fixture could place an order to deliver',
+      freshId != null, `status=${fresh.status} body=${JSON.stringify(fresh.body).slice(0, 90)}`)
     if (freshId) {
-      await api(`/api/admin/orders/${freshId}/confirm-payment`, { method: 'POST' })
-      await api(`/api/admin/orders/${freshId}/ship`, { method: 'POST' })
-      await api(`/api/admin/orders/${freshId}/deliver`, { method: 'POST' })
+      for (const action of ['confirm-payment', 'ship', 'deliver']) {
+        const step = await api(`/api/admin/orders/${freshId}/${action}`, { method: 'POST' })
+        check(`the counters fixture could ${action} it`, step.status === 200,
+          `HTTP ${step.status} for ${action}`)
+      }
     }
     await clearCart()
   }
@@ -1545,7 +1557,9 @@ check('the community API is reachable from both hosts',
 // /calendar, NOT /rooms — /rooms is implemented now, so asserting it 501s would be
 // asserting a stale fact. Pick one that is genuinely still unimplemented, and assert the
 // implemented ones separately below so this cannot silently drift again.
-const notYet = await get('/api/community/calendar')
+// /calendar is implemented now, so it cannot be the example. Use one that is genuinely
+// still unimplemented — and keep this pointed at something that has no reason to change.
+const notYet = await get('/api/community/gifs-not-a-real-endpoint')
 check('an unimplemented endpoint says so instead of returning 200 {}',
   notYet.status === 501 && notYet.body?.__notImplemented === true,
   `HTTP ${notYet.status} ${JSON.stringify(notYet.body).slice(0, 70)}`)
@@ -1681,6 +1695,10 @@ if (newPostId) {
 // The config surface persists; nothing reports itself as connected, because there is no
 // Discord gateway here. The alternative (503 for the whole surface) stopped the page
 // rendering its own "isn't switched on yet" copy.
+// Start from a known state. These settings PERSIST, so without clearing first this
+// assertion passes on a fresh checkout and fails on the second run — the token the
+// previous run saved is still there.
+await del('/api/community/mod/discord-bot', jar)
 const bot0 = await get('/api/community/mod/discord-bot', jar)
 check('/mod/discord-bot reports an unconfigured bot as `off`, not an error',
   bot0.status === 200 && bot0.body?.bot?.status === 'off',
@@ -1701,6 +1719,9 @@ check('the token itself is never returned',
   !JSON.stringify(botSet.body).includes(TOKEN), 'secret echoed back')
 check('a token that is obviously too short is refused',
   (await put('/api/community/mod/discord-bot', { token: 'x' }, jar)).status === 400, 'short token')
+// Remove it again so a second run sees the same starting state it did the first time.
+check('the token can be removed again',
+  (await del('/api/community/mod/discord-bot', jar)).status === 200, 'delete token')
 
 const conn = await post('/api/community/mod/connections',
   { platform: 'DISCORD', label: 'smoke bridge', secret: 'abcdef123456' }, jar)
@@ -1795,6 +1816,54 @@ check('an anonymous request cannot read the moderation queue',
   (await get('/api/community/mod/reports')).status === 403, 'anonymous')
 check('a MEMBER cannot read the moderation queue',
   (await get('/api/community/mod/reports', memberJar)).status === 403, 'member')
+
+// --- the calendar, the GIF picker, and cross-post targets ----------------
+const cal = await get('/api/community/calendar?from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z')
+check('/calendar returns {events, store, spans} — all three, each an array',
+  Array.isArray(cal.body?.events) && Array.isArray(cal.body?.store) && Array.isArray(cal.body?.spans),
+  `keys: ${Object.keys(cal.body || {}).join(', ')}`)
+// The window must actually filter. A calendar that ignores from/to shows every campaign
+// ever run, which reads as "everything is happening this month".
+const empty = await get('/api/community/calendar?from=2026-06-01T00:00:00.000Z&to=2026-06-03T00:00:00.000Z')
+check('an empty window returns nothing, rather than every campaign',
+  (empty.body?.spans ?? []).length === 0 && (empty.body?.store ?? []).length === 0,
+  `spans=${empty.body?.spans?.length} store=${empty.body?.store?.length}`)
+// The client collapses a `-open`/`-close` store marker into its matching span. That only
+// works if the ids relate, so assert the relationship rather than the counts.
+const spanIds = new Set((cal.body?.spans ?? []).map((x) => x.id))
+check('every store marker is dedupeable against a span',
+  (cal.body?.store ?? []).every((x) => /-(open|close|start|end)$/.test(x.id)
+    && spanIds.has(x.id.replace(/-(open|close|start|end)$/, ''))),
+  `${cal.body?.store?.length} markers vs ${spanIds.size} spans`)
+// startsAt is formatted by date-fns on every card; a bad one throws rather than blanking.
+check('every calendar event has a parseable startsAt',
+  (cal.body?.events ?? []).every((e) => !Number.isNaN(Date.parse(e.startsAt))), 'all parseable')
+
+const gifs = await get('/api/community/gifs')
+const gifItem = gifs.body?.items?.[0]
+check('/gifs returns {items:[...]} with id, url, preview and title',
+  Array.isArray(gifs.body?.items) && !!gifItem
+    && !!gifItem.id && !!gifItem.url && !!gifItem.preview && !!gifItem.title,
+  `keys: ${Object.keys(gifItem || {}).join(', ')}`)
+// `url` is what the composer puts in the post, so a dead url is a broken post.
+// The asset lives on the COMMUNITY host. BASE is the member host, and Node's fetch
+// SILENTLY IGNORES a `Host` header override — so this has to address the community
+// hostname directly, or it 404s and looks like a broken catalogue.
+const communityBase = `http://community.localhost:${new URL(BASE).port || 4400}`
+const firstGif = await fetch(`${communityBase}${gifItem?.url}`)
+check('the url a picked GIF inserts actually resolves',
+  firstGif.status === 200, `HTTP ${firstGif.status} for ${gifItem?.url}`)
+check('GIF search filters rather than returning everything',
+  (await get('/api/community/gifs?q=party')).body?.items?.length < (gifs.body?.items?.length ?? 0),
+  'search narrowed')
+check('the stickers tab returns a different set from the GIFs tab',
+  (await get('/api/community/gifs?kind=stickers')).body?.items?.length
+    !== (gifs.body?.items?.length ?? 0), 'stickers differ')
+
+// Cross-post targets are staff-only, and read the same records /mod manages.
+check('/connections is staff-only: a MEMBER sees none',
+  ((await get('/api/community/connections', memberJar)).body?.connections ?? []).length === 0,
+  'member saw connections')
 
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')

@@ -37,6 +37,14 @@ no credential is stored. The login form is real; the check behind it is not.
 
 Timestamps are relative to boot, so "2 days ago" stays true rather than drifting.
 
+## The GIF picker is not GIPHY
+
+The picker's panel carries a "Powered by GIPHY" credit upstream. There is no GIPHY here —
+it needs an API key and its terms do not allow scraping a catalogue from the public site.
+So `/gifs` serves a **curated local set** built from the 38 captured avatars and the eight
+storefront stickers. The picker, the search, the category chips and the insertion path all
+work; the images are static and are not GIPHY's.
+
 ## What is real and what is not
 
 | | |
@@ -63,8 +71,11 @@ Moderation: `mod/members` (with `?search=`), `mod/rooms`, `mod/discord-bot`,
 `mod/discord-login`, `mod/connections` (GET, POST, PATCH, DELETE), `auth/discord/unlink`.
 
 Moderation queue: `mod/reports` (GET with `?status=`, POST `:id` to resolve or dismiss).
+Also `calendar` (with `?from=`/`?to=`), `gifs` (with `?q=`/`?kind=`), and `connections`
+(staff-only cross-post targets).
 
-Still refusing: `calendar`, `connections`, `gifs` → 501.
+Nothing returns `501` any more. What still refuses needs a real external service: `live/*`,
+`mod/connections/:id/test` → 503, and `auth/discord/start` redirects with a marker.
 
 `mod/connections/:id/test`, `auth/discord/start`, `live/*` → 503 simulated: they need an
 actual Discord or LiveKit connection. Discord and connection *settings* are real and

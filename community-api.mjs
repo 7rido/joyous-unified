@@ -35,6 +35,7 @@
 
 import { FIXTURE_MEMBER } from './community-fixtures.mjs'
 import { ROOMS, MEMBERS, LOGIN_INDEX, participantsFor } from './community-demo.mjs'
+import { searchGifs } from './community-gifs.mjs'
 import {
   listPosts, getPost, commentsOf, createPost, patchPost, deletePost,
   addComment, patchComment, deleteComment, toggleReaction, votePoll, closePoll,
@@ -46,7 +47,7 @@ import {
   modMembers, modRooms,
 } from './community-store.mjs'
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const SESSION_COOKIE = 'joyous_community_sid'
@@ -65,6 +66,7 @@ export { FIXTURE_MEMBER }
  * why the parsing is this blunt — one file part, CRLF-delimited, no nested multipart.
  */
 const UPLOAD_DIR = new URL('./community/uploads/', import.meta.url).pathname
+const SAMPLES = new URL('./api-samples/', import.meta.url).pathname
 
 async function receiveUpload(req) {
   const raw = await new Promise((resolve) => {
@@ -456,6 +458,81 @@ export async function handleCommunityApi(req, res, pathname) {
     const out = deletePost(decodeURIComponent(postMatch[1]))
     if (out.error) { json(res, 400, out); return true }
     json(res, 200, { ok: true, __fixture: true })
+    return true
+  }
+
+  // --- the calendar ------------------------------------------------------
+  // `from`/`to` are ISO bounds the client always sends. Three collections:
+  //   events  the community's own, filtered to the window
+  //   store   commerce markers — group-buy campaigns opening and closing
+  //   spans   the same campaigns as RANGES, so a multi-day buy renders as one bar
+  //
+  // `store` ids carry -open/-close suffixes and are deduped by the client against a
+  // matching span, which is why both are returned: dropping either half would leave the
+  // dedupe with nothing to compare.
+  if (route === '/calendar' && req.method === 'GET') {
+    const params = new URL(req.url ?? '/', 'http://x').searchParams
+    const from = Date.parse(params.get('from') ?? '')
+    const to = Date.parse(params.get('to') ?? '')
+    const lo = Number.isNaN(from) ? -Infinity : from
+    const hi = Number.isNaN(to) ? Infinity : to
+    const within = (iso) => {
+      const t = Date.parse(iso)
+      return !Number.isNaN(t) && t >= lo && t <= hi
+    }
+
+    const events = listEvents().filter((e) => within(e.startsAt))
+
+    let campaigns = []
+    try {
+      campaigns = JSON.parse(readFileSync(join(SAMPLES, 'api_groupbuys.json'), 'utf8')).campaigns ?? []
+    } catch { /* no recording — the calendar still renders its own events */ }
+
+    const store = []
+    const spans = []
+    for (const c of campaigns) {
+      if (!c?.id || !c?.opensAt) continue
+      const open = String(c.opensAt)
+      const close = String(c.closesAt ?? c.opensAt)
+      const openT = Date.parse(open)
+      const closeT = Date.parse(close)
+      if (Number.isNaN(openT)) continue
+      // A campaign is in the window if its range OVERLAPS it, not only if it starts in it.
+      const overlaps = openT <= hi && (Number.isNaN(closeT) ? true : closeT >= lo)
+      if (!overlaps) continue
+      const name = String(c.name ?? 'Group buy')
+      store.push({ id: `${c.id}-open`, at: open, title: `${name} opens`, prefix: 'Opens' })
+      store.push({ id: `${c.id}-close`, at: close, title: `${name} closes`, prefix: 'Closes' })
+      spans.push({ id: c.id, from: open, to: close, title: name })
+    }
+
+    json(res, 200, { events, store, spans, __fixture: true })
+    return true
+  }
+
+  // --- the GIF / sticker picker ------------------------------------------
+  // NOT GIPHY. See community-gifs.mjs: a curated local set, because GIPHY needs an API
+  // key and its terms do not allow scraping a catalogue out of the public site. The
+  // picker, the search and the insertion path are all exercised; the content is local
+  // art and does not animate.
+  if (route === '/gifs' && req.method === 'GET') {
+    const params = new URL(req.url ?? '/', 'http://x').searchParams
+    const kind = params.get('kind') === 'stickers' ? 'stickers' : 'gifs'
+    json(res, 200, { ...searchGifs({ q: params.get('q') ?? '', kind }), provider: 'curated-local' })
+    return true
+  }
+
+  // --- cross-post destinations -------------------------------------------
+  // Staff only, and it reads the SAME records the moderation page manages, so a bridge
+  // added there appears here as a broadcast target.
+  if (route === '/connections' && req.method === 'GET') {
+    if (!isStaff) { json(res, 200, { connections: [], __fixture: true }); return true }
+    json(res, 200, {
+      connections: listConnections().connections.map((c) => ({
+        id: c.id, platform: c.platform, label: c.label, room: c.room, status: c.status,
+      })),
+      __fixture: true,
+    })
     return true
   }
 
