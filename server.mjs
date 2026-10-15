@@ -519,6 +519,44 @@ function resourceFromPath(pathname) {
   return { resourceType, resourceId: resourceType === 'system' ? null : (id ?? null) }
 }
 
+/**
+ * One definition of the directory's cohorts, used by BOTH `/api/admin/users` and
+ * `/api/admin/users/counts`. Computing them in two places is how a count starts
+ * disagreeing with the list it labels.
+ */
+function directoryPeople() {
+  const addr = (() => {
+    try {
+      return JSON.parse(readFileSync(join(SAMPLES, 'api_users_addresses.json'), 'utf8')).addresses?.[0] ?? null
+    } catch { return null }
+  })()
+  const u = accountUser
+  const row = u ? { ...u, address: addr, addresses: addr ? [addr] : [] } : null
+  return row ? [row, ...seededCustomers] : [...seededCustomers]
+}
+
+const isSuspendedUser = (x) => !!(x.suspendedAt || x.suspended === true || x.status === 'SUSPENDED')
+
+const DIRECTORY_COHORTS = {
+  all: () => true,
+  active: (x) => !!x.approved && !!x.emailVerified && !isSuspendedUser(x),
+  pending: (x) => !x.approved,
+  reviewed: (x) => !!x.approved,
+  admins: (x) => !!x.isAdmin,
+  standard: (x) => !x.tier || x.tier === 'USER',
+  vip: (x) => x.tier === 'VIP',
+  elite: (x) => x.tier === 'ELITE',
+  unverified: (x) => !x.emailVerified,
+  suspended: (x) => isSuspendedUser(x),
+}
+
+function directoryCounts() {
+  const everyone = directoryPeople()
+  const out = { total: everyone.length }
+  for (const [key, test] of Object.entries(DIRECTORY_COHORTS)) out[key] = everyone.filter(test).length
+  return out
+}
+
 function recordActivity(req, pathname, status) {
   if (req.method === 'GET' || req.method === 'HEAD') return null
   const { resourceType, resourceId, action: actionOverride } = resourceFromPath(pathname)
@@ -3546,14 +3584,7 @@ const server = createServer({
         // The only account the recording contains - already sanitised, so no real
         // details are involved. Served so the directory is not empty and the seeded
         // admin appears as a row.
-        const seeded = seededCustomers
-        const u = JSON.parse(await readFile(join(SAMPLES, 'api_auth_me.json'), 'utf8')).user
-        let addr = null
-        try {
-          addr = (JSON.parse(await readFile(join(SAMPLES, 'api_users_addresses.json'), 'utf8')).addresses ?? [])[0] ?? null
-        } catch { /* none */ }
-        const row = { ...u, address: addr, addresses: addr ? [addr] : [] }
-        const everyone = [row, ...seeded]
+        const everyone = directoryPeople()
 
         // The page sends page/limit/search/status/sort and BRANCHES on `if (data.pagination)`.
         // This used to ignore every one of them and always answer page 1 with all rows, so
@@ -3580,29 +3611,8 @@ const server = createServer({
         // the risk is a new chip appearing and quietly not filtering. The counts below are
         // computed from the same predicates, so a chip whose count is non-zero but whose
         // list is empty is visible rather than silent.
-        const isSuspended = (x) => !!(x.suspendedAt || x.suspended === true || x.status === 'SUSPENDED')
-
-        const STATUS_PREDICATES = {
-          all: () => true,
-          // "Active" = a usable account: approved, verified, not suspended.
-          active: (x) => !!x.approved && !!x.emailVerified && !isSuspended(x),
-          pending: (x) => !x.approved,
-          awaiting: (x) => !x.approved,
-          reviewed: (x) => !!x.approved,
-          approved: (x) => !!x.approved,
-          admins: (x) => !!x.isAdmin,
-          admin: (x) => !!x.isAdmin,
-          // The tier chips. `standard` is the absence of a paid tier, which is how the
-          // seed represents a plain account (tier USER or unset).
-          standard: (x) => !x.tier || x.tier === 'USER',
-          user: (x) => !x.tier || x.tier === 'USER',
-          vip: (x) => x.tier === 'VIP',
-          elite: (x) => x.tier === 'ELITE',
-          unverified: (x) => !x.emailVerified,
-          suspended: (x) => isSuspended(x),
-          deleted: (x) => x.deleted === true,
-        }
-        const matchesStatus = STATUS_PREDICATES[status] ?? STATUS_PREDICATES.all
+        // Shared with `/api/admin/users/counts` so the two can never disagree.
+        const matchesStatus = DIRECTORY_COHORTS[status] ?? DIRECTORY_COHORTS.all
 
         const filtered = everyone
           .filter(matchesStatus)
@@ -3623,19 +3633,7 @@ const server = createServer({
         // selection.
         // One entry per chip, from the SAME predicates the list uses — a count that
         // disagrees with the list it labels is worse than no count.
-        const counts = {
-          total: everyone.length,
-          all: everyone.length,
-          active: everyone.filter(STATUS_PREDICATES.active).length,
-          pending: everyone.filter(STATUS_PREDICATES.pending).length,
-          reviewed: everyone.filter(STATUS_PREDICATES.reviewed).length,
-          admins: everyone.filter(STATUS_PREDICATES.admins).length,
-          standard: everyone.filter(STATUS_PREDICATES.standard).length,
-          vip: everyone.filter(STATUS_PREDICATES.vip).length,
-          elite: everyone.filter(STATUS_PREDICATES.elite).length,
-          unverified: everyone.filter(STATUS_PREDICATES.unverified).length,
-          suspended: everyone.filter(STATUS_PREDICATES.suspended).length,
-        }
+        const counts = directoryCounts()
 
         console.log(`  [admin] /admin/users -> ${slice.length}/${sorted.length} (status=${status}${search ? ` search=${search}` : ''}, page ${page}/${pages})`)
         sendJson(res, 200, {
@@ -3794,6 +3792,53 @@ const server = createServer({
           batchAware: true,
           __derived: 'catalogue stock and per-batch counts',
         })
+        return
+      }
+
+      /**
+       * The admin fee booked on each order, for one month.
+       *
+       * The page builds each row from `fee.order.orderNumber`, `fee.order.user`,
+       * `fee.orderTotal`, `fee.feeAmount`, `fee.cancelled` and `fee.settled` — so `order`
+       * is a NESTED object, not an id, and a flat row renders "—" in the Order column.
+       * `status` and the settle-bulk selection are both derived from `cancelled`/`settled`.
+       *
+       * Derived from the same orders the monthly summary aggregates, so the two agree.
+       */
+      const feeMonthMatch = new RegExp('^/api/admin/fees/by-month/(\\d{4})/(\\d{1,2})$').exec(pathname)
+      if (feeMonthMatch && req.method === 'GET') {
+        const key = `${feeMonthMatch[1]}-${String(feeMonthMatch[2]).padStart(2, '0')}`
+        const fees = allOrders()
+          .filter((o) => String(o.placedAt ?? '').slice(0, 7) === key)
+          .map((o) => ({
+            id: o.id,
+            order: {
+              orderNumber: o.orderNumber ?? o.number ?? null,
+              user: o.customerName ?? o.email ?? o.user?.name ?? o.user?.email ?? null,
+              id: o.id,
+            },
+            customer: o.customerName ?? o.email ?? null,
+            paymentMethod: o.paymentMethod ?? 'UNKNOWN',
+            orderTotal: o.totalAmount ?? o.total ?? 0,
+            feeAmount: o.adminFee ?? 0,
+            cancelled: String(o.status ?? '').toUpperCase() === 'CANCELLED',
+            settled: !!o.feeSettled,
+            createdAt: o.placedAt ?? null,
+          }))
+        console.log(`  [admin] fees/by-month/${key} -> ${fees.length} fee(s)`)
+        sendJson(res, 200, { fees, month: key, __derived: 'booked fees for the month' })
+        return
+      }
+
+      /**
+       * The customer-directory counts.
+       *
+       * Served from the SAME predicates as `/api/admin/users`, so the chip counts and the
+       * chip lists cannot disagree — they were computed in two places, which is how a
+       * count ends up disagreeing with the list it labels.
+       */
+      if (pathname === '/api/admin/users/counts' && req.method === 'GET') {
+        sendJson(res, 200, { ...directoryCounts(), __derived: 'computed from the directory' })
         return
       }
 

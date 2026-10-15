@@ -85,30 +85,30 @@ re-validated on load: `admin-products.json`, `promo-codes.json`, `newsletter.jso
 `storefront-config.json`, `idempotency-keys.json`, `pack-deals.json`, plus `outbox/` and
 `community/uploads/`.
 
-### 10 admin endpoints still hollow, verified by probing each one
+### No admin endpoint is hollow any more
 
-Nine return a genuinely **empty shape**:
+Eleven endpoints used to return an empty shape or a stub. All eleven are now derived from
+data that already exists, and every one was written after reading its CALL SITE — three of
+them turned out to be shape bugs rather than empty ones:
 
-```
-/api/admin/dashboard/awaiting-payment   /api/admin/activity-logs
-/api/admin/activity-logs/facets         /api/admin/demand
-/api/admin/stock-levels                 /api/admin/users/counts
-/api/admin/fees/settlement-wallets      /api/admin/shipstation/carriers
-/api/admin/shipstation/allowlist
-```
+| Endpoint | What was actually wrong |
+| --- | --- |
+| `users` (not counts) | Ignored page/limit/search/status/sort, so the cohort filter showed everyone |
+| `users/counts` | Returned `{}`; now shares one cohort definition with the list |
+| `fees/settlement-wallets` | Bare `[]` → the page silently used addresses hardcoded in its own bundle |
+| `fees/by-month/:y/:m` | `{}`; `order` must be a NESTED object or the Order column renders "—" |
+| `stock-levels` | `{}` → the page took its own 404 fallback path and built different columns |
+| `dashboard/awaiting-payment` | `{}`; the Today review queue had nothing to confirm |
+| `demand` | Reported `inTransit: 0` — "nothing in transit" rather than "nothing counted" |
+| `system/health` | `ok: true` hardcoded. `ok` is now a real read/write probe of the data dirs |
+| `activity-logs` | No log existed. Entries are now RECORDED from real admin requests |
+| `activity-logs/facets` | Derived from what was recorded, so no filter can return nothing |
+| `shipstation/carriers` + `allowlist` | `{}`; now the carrier vocabulary the app already uses |
 
-Plus `/api/admin/fees/by-month/:id`, which answers `{}`.
-
-One more is a hardcoded **stub** rather than an empty shape — it returns plausible values
-that nothing derives:
-
-```
-/api/admin/system/health -> {"configured":false,"ok":true,"database":"ok","storage":"ok",...}
-```
-
-That one is arguably worse than empty, because `ok: true` reads as a passing health check
-when nothing was checked. All eleven are reads derivable from data that already exists —
-the cheapest remaining work on the admin side.
+`system/health` is worth singling out: a hardcoded `ok: true` is **worse than an empty
+object**, because an empty object looks broken while a passing check that checks nothing
+looks fine. It was verified by breaking it — `chmod 500` on the uploads directory flips it
+to `ok: false, storage: "unwritable"`, and restoring it flips back.
 
 ### Community: 501 rather than 200
 
@@ -188,7 +188,8 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **The 10 admin reads** — see the section above. The community surface is complete.
+1. **The real Discord wiring**, whenever that button gets built. Everything else in the
+   project is now either implemented or deliberately refused.
 2. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
 
 **Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and

@@ -1955,6 +1955,83 @@ check('search narrows the directory',
 check('limit is honoured',
   (await get('/api/admin/users?limit=3')).body?.users?.length <= 3, 'limit ignored')
 
+// --- the last hollow admin endpoints ------------------------------------
+// health used to be a hardcoded {ok:true} — a check that checked nothing, which is worse
+// than an empty object because an empty object at least looks broken.
+const sysHealth = await get('/api/admin/system/health')
+check('system/health reports ok as a real boolean, not a constant',
+  typeof sysHealth.body?.ok === 'boolean', `ok=${JSON.stringify(sysHealth.body?.ok)}`)
+check('system/health keeps the groups the page destructures WITHOUT optional chaining',
+  ['shipstation', 'webhook', 'trackingJob', 'email', 'payments']
+    .every((k) => sysHealth.body?.[k] && typeof sysHealth.body[k] === 'object'),
+  `groups: ${Object.keys(sysHealth.body || {}).filter((k) => typeof sysHealth.body[k] === 'object').join(', ')}`)
+check('and says plainly that no external service is connected',
+  sysHealth.body?.shipstation?.configured === false && sysHealth.body?.email?.configured === false,
+  'configured flags')
+
+// demand used to report inTransit: 0, which reads as "nothing in transit" rather than
+// "nothing was counted".
+const demandRes = await get('/api/admin/demand')
+check('demand derives stats.inTransit rather than reporting a constant',
+  typeof demandRes.body?.stats?.inTransit === 'number' && Array.isArray(demandRes.body?.rows),
+  `inTransit=${demandRes.body?.stats?.inTransit} rows=${demandRes.body?.rows?.length}`)
+
+// The activity log is RECORDED from real traffic, so an action must produce an entry.
+const actBefore = (await get('/api/admin/activity-logs')).body?.total ?? 0
+await put('/api/admin/settings', { storeName: 'Smoke activity probe' })
+const actAfter = await get('/api/admin/activity-logs')
+check('a real admin action is recorded in the activity log',
+  (actAfter.body?.total ?? 0) > actBefore, `${actBefore} -> ${actAfter.body?.total}`)
+const actEntry = actAfter.body?.logs?.[0]
+// The row resolver triggers on `adminId`; sending `actorId` made every row read "System".
+check('a log entry carries adminId, which is what the row resolver triggers on',
+  !!actEntry?.adminId, `keys: ${Object.keys(actEntry || {}).join(', ')}`)
+check('and a resourceType from the vocabulary the resolver understands',
+  ['order', 'user', 'product', 'variant', 'address', 'settings', 'spotlight', 'system']
+    .includes(actEntry?.resourceType),
+  `resourceType=${actEntry?.resourceType}`)
+check('the actors map resolves that id, so the By column is not "System"',
+  !!actAfter.body?.actors?.[actEntry?.adminId], 'actors map')
+check('facets are derived from what was recorded, so they cannot offer an empty filter',
+  Array.isArray((await get('/api/admin/activity-logs/facets')).body?.resourceTypes), 'facets')
+
+// The per-order fee rows. `order` is NESTED — the page reads fee.order.orderNumber — so a
+// flat row renders an em dash in the Order column instead of throwing.
+const feeMonth = await get('/api/admin/fees/by-month/2026/10')
+check('fees/by-month returns {fees:[...]} with a NESTED order object',
+  Array.isArray(feeMonth.body?.fees) && !!feeMonth.body.fees[0]?.order
+    && 'orderNumber' in feeMonth.body.fees[0].order,
+  `keys: ${Object.keys(feeMonth.body?.fees?.[0] || {}).join(', ')}`)
+check('a fee row carries the fields the status chip derives from',
+  feeMonth.body.fees.every((f) => typeof f.feeAmount === 'number'
+    && typeof f.cancelled === 'boolean' && typeof f.settled === 'boolean'),
+  'fee row shape')
+
+// The count and the list must come from ONE definition, or they drift.
+const dirCounts = await get('/api/admin/users/counts')
+const users = await get('/api/admin/users?limit=50')
+check('/users/counts returns {counts}, not a bare object of everything',
+  typeof dirCounts.body?.total === 'number' && typeof dirCounts.body?.pending === 'number',
+  `keys: ${Object.keys(dirCounts.body || {}).join(', ')}`)
+// Compare the COHORTS, not the whole body: /counts also carries `__derived`, a
+// documentation field the list has no reason to include. Comparing everything made two
+// agreeing payloads look different.
+const cohortKeys = ['total', 'all', 'active', 'pending', 'reviewed', 'admins',
+  'standard', 'vip', 'elite', 'unverified', 'suspended']
+const a = dirCounts.body ?? {}
+const b2 = users.body?.counts ?? {}
+check('the counts endpoint and the list agree on every cohort',
+  cohortKeys.every((k) => k in a === k in b2 && a[k] === b2[k]),
+  cohortKeys.filter((k) => a[k] !== b2[k]).map((k) => `${k}: ${a[k]} vs ${b2[k]}`).join(', ') || 'all agree')
+
+// ShipStation has no account here, so it must not imply one.
+const ssCarriers = await get('/api/admin/shipstation/carriers')
+check('shipstation carriers uses the app\'s own carrier vocabulary',
+  (ssCarriers.body?.carriers ?? []).some((c) => ['USPS', 'UPS', 'FedEx', 'DHL'].includes(c.name)),
+  `${ssCarriers.body?.carriers?.length} carriers`)
+check('and states that nothing is connected',
+  ssCarriers.body?.configured === false, `configured=${ssCarriers.body?.configured}`)
+
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')
 check('LiveKit-dependent endpoints refuse rather than fake success',
