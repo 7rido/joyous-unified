@@ -1865,6 +1865,53 @@ check('/connections is staff-only: a MEMBER sees none',
   ((await get('/api/community/connections', memberJar)).body?.connections ?? []).length === 0,
   'member saw connections')
 
+// --- the member -> community SSO handoff --------------------------------
+// This was the last unexercised flow, and it was hiding a real defect: the member side
+// answered from a RECORDED SAMPLE, so it returned the same code every time, and the
+// community side accepted ANY non-empty string. A fabricated code was a working
+// sign-in-as-the-admin door. These assertions exist so that cannot come back.
+const mint1 = await post('/api/community-handoff', {})
+const mint2 = await post('/api/community-handoff', {})
+check('the handoff code is unique per request, not a replayed constant',
+  !!mint1.body?.code && mint1.body.code !== mint2.body.code,
+  `same code twice: ${mint1.body?.code === mint2.body?.code}`)
+check('the code is a long random string, not a guessable value',
+  typeof mint1.body?.code === 'string' && mint1.body.code.length >= 32,
+  `length=${mint1.body?.code?.length}`)
+
+// A fabricated code must be refused. This is the defect: it used to return 200 and a
+// session cookie.
+const forgedHandoff = await post('/api/community/auth/handoff', { code: 'totally-made-up-12345' })
+check('a FABRICATED handoff code is refused, not traded for a session',
+  forgedHandoff.status === 400 && !forgedHandoff.setCookie.includes('joyous_community_sid'),
+  `HTTP ${forgedHandoff.status} cookie=${forgedHandoff.setCookie ? 'ISSUED' : 'none'}`)
+check('an empty handoff code is refused',
+  (await post('/api/community/auth/handoff', { code: '' })).status === 400, 'empty code')
+
+// The real flow: mint on the member host, redeem on the community host.
+const handoff = await post('/api/community/auth/handoff', { code: mint1.body.code })
+check('a minted code is redeemed for a member',
+  handoff.status === 200 && !!handoff.body?.member?.id,
+  `HTTP ${handoff.status} member=${handoff.body?.member?.id}`)
+// The two apps do NOT share an identity namespace, which is what this flow was hiding.
+check('the redeemed member is a community member, resolved across the two namespaces',
+  handoff.body?.member?.id?.startsWith('comm-'),
+  `id=${handoff.body?.member?.id}`)
+const handoffSid = /joyous_community_sid=([^;]+)/.exec(handoff.setCookie ?? '')?.[1] ?? ''
+check('redeeming issues a working session cookie', handoffSid.length > 0, 'cookie issued')
+const handoffMe = await get('/api/community/auth/me', {
+  headers: { Cookie: `joyous_community_sid=${handoffSid}` },
+})
+check('that session authenticates a subsequent request',
+  handoffMe.body?.member?.id === handoff.body?.member?.id,
+  `me=${handoffMe.body?.member?.id}`)
+
+// Single use. A code sits in a URL fragment, so anyone who reads it out of the address
+// bar or history could otherwise replay it.
+check('the code cannot be redeemed a second time',
+  (await post('/api/community/auth/handoff', { code: mint1.body.code })).status === 400,
+  'reused')
+
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')
 check('LiveKit-dependent endpoints refuse rather than fake success',

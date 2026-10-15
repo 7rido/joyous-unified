@@ -34,6 +34,7 @@
  */
 
 import { FIXTURE_MEMBER } from './community-fixtures.mjs'
+import { redeemHandoffCode } from './community-handoff.mjs'
 import { ROOMS, MEMBERS, LOGIN_INDEX, participantsFor } from './community-demo.mjs'
 import { searchGifs } from './community-gifs.mjs'
 import {
@@ -117,6 +118,37 @@ function parseCookies(header = '') {
 }
 
 /** The signed-in session for this request, or null. */
+/**
+ * Map a member-app identity onto a community member.
+ *
+ * THE TWO APPS DO NOT SHARE AN IDENTITY NAMESPACE, which is what this flow was hiding:
+ * the member app's account is `6f1c2a4e-…` / `ada.lovelace@example.com`, while community
+ * members are `comm-1` / `ada@example.com`. Matching on either field alone fails for a
+ * legitimate handoff, and the failure reads as "that account can no longer be found".
+ *
+ * Order, narrowest first:
+ *   1. exact id       — right once the two records are genuinely linked
+ *   2. exact email    — when the same address is used on both sides
+ *   3. linked address — an explicit table, so the mapping is STATED rather than guessed
+ *   4. nothing        — refuse. Never default to a member: that is how a broken handoff
+ *                       becomes a silent sign-in as the wrong person.
+ */
+const LINKED_ADDRESSES = {
+  'ada.lovelace@example.com': 'ada@example.com',
+  'ada@example.com': 'ada@example.com',
+}
+
+function resolveHandoffMember(entry) {
+  const direct = MEMBERS.find((m) => m.id === entry.memberId)
+  if (direct) return direct
+  if (!entry.email) return null
+  const byEmail = MEMBERS.find((m) => m.email === entry.email)
+  if (byEmail) return byEmail
+  const linked = LINKED_ADDRESSES[entry.email.toLowerCase()]
+  if (!linked) return null
+  return MEMBERS.find((m) => m.email === linked) ?? null
+}
+
 function sessionOf(req) {
   const sid = parseCookies(req.headers.cookie ?? '')[SESSION_COOKIE]
   return sid ? SESSIONS.get(sid) ?? null : null
@@ -232,13 +264,27 @@ export async function handleCommunityApi(req, res, pathname) {
   // The member app POSTs /api/community-handoff, then redirects to
   // <community>/sso#code=...; the client posts that code here. Both ends are local, so
   // this completes without touching the live site.
+  /**
+   * Redeem the one-time code the member app issued.
+   *
+   * This used to accept ANY non-empty string and sign in the fixture member, which made
+   * the handoff an open "sign in as the admin" door — a fabricated code worked. The code
+   * is now checked against the shared store, is single-use, and expires after 60s.
+   *
+   * The identity comes from the CODE, not from the request: the member host is the only
+   * thing that can mint one, so it is the only thing that decides who the code is for.
+   */
   if (route === '/auth/handoff' && req.method === 'POST') {
     const body = await readBody(req)
-    const code = String(body.code ?? '').trim()
-    if (!code) { json(res, 400, { error: 'That sign-in link has expired — sign in below.' }); return true }
-    startSession(res, FIXTURE_MEMBER)
-    console.log('  [community] SSO handoff accepted (fixture)')
-    json(res, 200, { member: FIXTURE_MEMBER })
+    const out = redeemHandoffCode(body.code, (entry) => resolveHandoffMember(entry))
+    if (out.error) {
+      console.log(`  [community] SSO handoff REFUSED: ${out.error}`)
+      json(res, 400, { error: out.error })
+      return true
+    }
+    startSession(res, out.member)
+    console.log(`  [community] SSO handoff redeemed for ${out.member.displayName}`)
+    json(res, 200, { member: out.member })
     return true
   }
 

@@ -66,9 +66,8 @@ configured" from "this endpoint is broken", so the page's own honest copy —
 
 Two things sit **outside** this numbering and are not stage work:
 
-- **No community endpoint returns `501` any more.** The last four reads — `/calendar`,
-  `/mod/reports`, `/connections`, `/gifs` — are implemented. What remains is the `/sso`
-  handoff above, which is a flow rather than an endpoint.
+- **The community surface is complete**: no endpoint returns `501`, and the `/sso` handoff
+  works end to end across both apps.
 - **The `/sso` handoff**, wired at both ends but never exercised. The member app POSTs
   `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
   exchanges it at `/auth/handoff`. All three pieces exist locally.
@@ -189,14 +188,37 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **The `/sso` handoff, end to end** — the only community item left. Everything else is
-   built; see below.
-2. **The 10 admin reads** — each a thin handler over existing data. Removes the last
-   hollow shapes from a member-app route tour.
-3. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
+1. **The 10 admin reads** — see the section above. The community surface is complete.
+2. **`danger`** is accepted by `BANNER_STYLES` but no UI path produces it.
 
 **Not on this list, on purpose:** Discord and LiveKit (stage 3d). They answer `503` and
 always will.
+
+## The member -> community handoff
+
+Clicking Community in the member app runs a three-piece flow across two hosts:
+
+```
+member app   POST /api/community-handoff        -> { code }      single-use, 60s
+browser      window.location.assign(<community>/sso#code=…)
+community    reads the hash, POST /auth/handoff -> { member }   session cookie set
+```
+
+The code travels in the URL **fragment**, so it never reaches a server log or a Referer,
+and the exchange is a same-origin POST on the community host — the member host cannot mint
+a community session, it can only issue a code.
+
+**What this was hiding.** The member side answered from a RECORDED SAMPLE, so it returned
+the same code on every request (`gUx5u5d…`, a value sitting in the repo), and the community
+side accepted **any non-empty string** and signed in the fixture member. So a fabricated
+code was a working "sign in as the admin" door. Codes are now random, single-use, and
+expire; a forged one is refused and issues no cookie.
+
+**The two apps do not share an identity namespace** — the member account is
+`6f1c2a4e-…` / `ada.lovelace@example.com`, the community member is `comm-1` /
+`ada@example.com`. They are linked by an explicit table in `community-api.mjs`, narrowest
+match first, and an unmapped identity is REFUSED rather than defaulted. Defaulting is how a
+broken mapping becomes a silent sign-in as the wrong person.
 
 ## Known limits of the harness
 

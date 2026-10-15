@@ -37,6 +37,19 @@ no credential is stored. The login form is real; the check behind it is not.
 
 Timestamps are relative to boot, so "2 days ago" stays true rather than drifting.
 
+## Signing in from the member app
+
+The member app's Community button hands off to the forum. Locally:
+
+```
+http://localhost:4400      sign in, then click Community
+  -> redirects to http://community.localhost:4400/sso#code=…
+  -> exchanged for a session and lands on the forum, already signed in
+```
+
+The code is single-use and expires after 60 seconds, so a stale link in browser history is
+dead. A fabricated code is refused.
+
 ## The GIF picker is not GIPHY
 
 The picker's panel carries a "Powered by GIPHY" credit upstream. There is no GIPHY here —

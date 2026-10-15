@@ -34,6 +34,7 @@ import {
   applyBulk, applyOrderTransition, ORDER_TRANSITIONS, SEED_MARK,
 } from './admin-seed.mjs'
 import { handleCommunityApi } from './community-api.mjs'
+import { issueHandoffCode } from './community-handoff.mjs'
 import {
   seedSubscribers, seedCampaigns as seedNewsletterCampaigns,
   reachable, audienceCounts, SUBSCRIBER_MARK,
@@ -1649,6 +1650,23 @@ const server = createServer({
       res.end(JSON.stringify({
         message: `Route ${req.method}:${pathname} not found`, error: 'Not Found', statusCode: 404,
       }))
+      return
+    }
+
+    // --- the SSO handoff code ---------------------------------------------
+    // BEFORE the generic replay below, because a recorded sample exists for this path and
+    // would otherwise win. That sample returns the SAME code on every request — a constant
+    // sitting in the repo — so a "one-time" code was neither unique nor one-time.
+    if (pathname === '/api/community-handoff' && req.method === 'POST') {
+      const code = issueHandoffCode(accountUser)
+      if (!code) {
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ message: 'Sign in before continuing to the community' }))
+        return
+      }
+      // Which host the browser is sent to is the CLIENT's decision — it derives it from
+      // window.location — so only the code comes back from here.
+      sendJson(res, 200, { code })
       return
     }
 
