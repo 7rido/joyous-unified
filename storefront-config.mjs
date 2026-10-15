@@ -216,3 +216,21 @@ export const spotlightForPublic = (s, products = []) => ({
   delayMs: s.delayMs,
   products,
 })
+
+
+/**
+ * Settlement addresses shown under Fees -> "Where to send it".
+ *
+ * These were ONLY in the client bundle: FeesPage carries a hardcoded fallback list and
+ * uses it whenever `data.wallets` is empty, so the section rendered correctly while the
+ * endpoint returned a bare `[]` — and any server-side value would have been DISCARDED in
+ * favour of the bundled copy. The addresses are now the server's, served as
+ * `{ wallets: [...] }`; the client's copy stays as its own last-resort fallback.
+ *
+ * Read out of `dist/assets/FeesPage-*.js`, not invented. The endpoint is read-only — the
+ * page says "Read-only here — change them in Store settings › Platform fee".
+ */
+export const SETTLEMENT_WALLETS = [
+  { label: 'USDC on Ethereum or Base', address: '0xB151082B952f327b283957A8aB450850942Cbf61' },
+  { label: 'PYUSD on Solana', address: '8UveHNP2PcmrfnB6ECPXzT5MMgh9aLiksPj9KiGctkJz' },
+]

@@ -42,8 +42,7 @@ import {
 import {
   readStorefrontConfig, saveStorefrontConfig,
   validateBanner, validateEffect, validateSpotlight,
-  spotlightForAdmin, spotlightForPublic,
-} from './storefront-config.mjs'
+  spotlightForAdmin, spotlightForPublic, SETTLEMENT_WALLETS } from './storefront-config.mjs'
 import { readFile } from 'node:fs/promises'
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
@@ -491,6 +490,56 @@ function adminCategories() {
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
   res.end(JSON.stringify(payload))
+}
+
+/**
+ * Rows for `/api/admin/stock-levels`.
+ *
+ * Mirrors the shape the page builds for itself when that endpoint 404s, so both paths
+ * produce the same columns. It is NOT the raw catalogue: the page reads `p.name`, each
+ * variant's `available`, `batchCount`, `lowStockAlert` and `waiting`, and `categoryName`
+ * for the group heading. A raw catalogue row would render blank cells rather than throw,
+ * which is the harder failure to notice.
+ */
+function stockLevelRows() {
+  const categories = (() => {
+    try {
+      return JSON.parse(readFileSync(join(SAMPLES, 'api_admin_categories.json'), 'utf8')).categories ?? []
+    } catch { return [] }
+  })()
+  const catName = (p) => p.category?.name ?? p.categoryName
+    ?? categories.find((c) => c.id === p.categoryId)?.name ?? null
+
+  return catalogProducts
+    .filter((p) => !p.archived)
+    .map((p) => {
+      const variants = (p.variants ?? []).map((v) => ({
+        id: v.id,
+        name: v.name,
+        sku: v.sku ?? null,
+        secondarySku: v.secondarySku ?? null,
+        isVisible: v.isVisible !== false,
+        lowStockAlert: v.lowStockAlert ?? null,
+        batchCount: Array.isArray(v.batches) ? v.batches.length : 0,
+        available: v.stockQty ?? v.availableStock ?? 0,
+        waiting: 0,
+      }))
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku ?? null,
+        isVisible: p.isVisible !== false,
+        archived: !!p.archived,
+        categoryId: p.category?.id ?? p.categoryId ?? null,
+        categoryName: catName(p),
+        available: variants.length
+          ? variants.reduce((n, v) => n + v.available, 0)
+          : p.stockQty ?? 0,
+        waiting: 0,
+        variants,
+      }
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
 }
 
 /** Stock on the wire: Infinity is not JSON, so unlimited ships as a big number. */
@@ -3627,6 +3676,53 @@ const server = createServer({
         },
         '/api/admin/spotlight/settings': { enabled: false, products: [] },
       }
+      /**
+       * Orders awaiting a payment decision — the Today dashboard's review queue.
+       *
+       * The page reads `data.orders` and each row offers Confirm, which posts
+       * `/admin/orders/:id/confirm-payment` with `adminNotes` ("Confirmed from Today").
+       * So these must be REAL order rows with the fields that action needs, not a stub:
+       * a row without `id` would render a button that confirms nothing.
+       */
+      if (pathname === '/api/admin/dashboard/awaiting-payment' && req.method === 'GET') {
+        const limit = Math.min(
+          Math.max(Number(new URL(req.url ?? '/', 'http://x').searchParams.get('limit')) || 10, 1),
+          100,
+        )
+        const waiting = allOrders()
+          .filter((o) => o.status === 'AWAITING_PAYMENT_REVIEW')
+          .slice(0, limit)
+        console.log(`  [admin] awaiting-payment -> ${waiting.length} order(s) to review`)
+        sendJson(res, 200, {
+          orders: waiting,
+          total: waiting.length,
+          __derived: 'orders in AWAITING_PAYMENT_REVIEW',
+        })
+        return
+      }
+
+      /**
+       * Per-product stock. The page reads `data.products` and, on a 404, falls back to
+       * listing `/admin/products` — so an empty object here is not an error state, it is a
+       * silently different code path with different columns.
+       */
+      if (pathname === '/api/admin/stock-levels' && req.method === 'GET') {
+        sendJson(res, 200, {
+          products: stockLevelRows(),
+          batchAware: true,
+          __derived: 'catalogue stock and per-batch counts',
+        })
+        return
+      }
+
+      // The settlement addresses. Served as `{wallets:[...]}` because the page reads
+      // `data.wallets` — a bare `[]` made it fall back to a list hardcoded in its own
+      // bundle, so the endpoint looked harmless while any server value was discarded.
+      if (pathname === '/api/admin/fees/settlement-wallets' && req.method === 'GET') {
+        sendJson(res, 200, { wallets: SETTLEMENT_WALLETS, __derived: 'settlement addresses' })
+        return
+      }
+
       const body = SHAPES[pathname] ?? (EMPTY_ARRAY.has(pathname) ? [] : {})
       notRecorded.add(`${req.method} ${pathname}`)
       console.warn(`  [admin] ${pathname} -> empty ${Array.isArray(body) ? 'array' : 'shape'} (never recorded)`)
