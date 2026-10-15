@@ -42,9 +42,10 @@ import {
 import {
   readStorefrontConfig, saveStorefrontConfig,
   validateBanner, validateEffect, validateSpotlight,
-  spotlightForAdmin, spotlightForPublic, SETTLEMENT_WALLETS } from './storefront-config.mjs'
+  spotlightForAdmin, spotlightForPublic, SETTLEMENT_WALLETS,
+  SHIPSTATION_CARRIERS, SHIPSTATION_SERVICE_CODES, SHIPSTATION_PACKAGE_TYPES } from './storefront-config.mjs'
 import { readFile } from 'node:fs/promises'
-import { readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync, accessSync, constants } from 'node:fs'
 import { existsSync, statSync } from 'node:fs'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -471,6 +472,73 @@ function requireAdmin(req, res) {
   res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify({ error: 'Admins only.', detail: 'Start the server with ADMIN_VIEW=1 to act as the recorded admin.' }))
   return false
+}
+
+/**
+ * An activity log built from REAL requests.
+ *
+ * The admin Activity page shows who changed what. There is no recorded log to replay and
+ * inventing entries would be fiction, so entries are recorded as the server handles them:
+ * every mutating (non-GET) admin request appends one, with the actor and the resource it
+ * touched. In-memory and bounded — it describes THIS process, which is what the console
+ * has always done; persisting it would imply history the fixture data cannot support.
+ */
+const ACTIVITY = []
+const ACTIVITY_MAX = 500
+
+/** The recorded admin, used as the actor for everything in ADMIN_VIEW mode. */
+function activityActor() {
+  const id = accountUser?.id ?? 'local-admin'
+  return {
+    id,
+    name: [accountUser?.firstName, accountUser?.lastName].filter(Boolean).join(' ')
+      || accountUser?.email || 'Local admin',
+    email: accountUser?.email ?? null,
+    role: 'ADMIN',
+  }
+}
+
+/**
+ * `resourceType` drives the row's badge and link, so it comes from the PATH rather than
+ * the body: `/api/admin/products/:slug` is a product whatever the payload claims.
+ */
+function resourceFromPath(pathname) {
+  const seg = pathname.replace('/api/admin/', '').split('/').filter(Boolean)
+  const [head, id] = seg
+  if (head === 'public') return { resourceType: 'settings', resourceId: null }
+  // Order actions are /orders/:id/<action>; the verb is the interesting part.
+  if (head === 'orders' && seg[2]) return { resourceType: 'order', resourceId: id, action: seg[2] }
+  if (head === 'dashboard') return { resourceType: 'system', resourceId: null }
+  // The resolver in activity-*.js switches on a FIXED vocabulary and has no default
+  // mapping, so an unknown type renders as a bare capitalised word. These are the eight
+  // it understands; everything else is recorded as `system` rather than inventing a type
+  // the UI cannot label.
+  const KNOWN = { orders: 'order', users: 'user', products: 'product', variants: 'variant',
+    addresses: 'address', settings: 'settings', storefront: 'spotlight', system: 'system' }
+  const resourceType = KNOWN[head] ?? 'system'
+  return { resourceType, resourceId: resourceType === 'system' ? null : (id ?? null) }
+}
+
+function recordActivity(req, pathname, status) {
+  if (req.method === 'GET' || req.method === 'HEAD') return null
+  const { resourceType, resourceId, action: actionOverride } = resourceFromPath(pathname)
+  const actor = activityActor()
+  const entry = {
+    id: `act-${ACTIVITY.length + 1}-${Date.now().toString(36)}`,
+    timestamp: new Date().toISOString(),
+    action: actionOverride ?? req.method.toLowerCase(),
+    resourceType,
+    resourceId,
+    // `adminId` is what the UI's resolver triggers on. Sending `actorId` left every row
+    // showing "System" — the actor lookup never matched, silently.
+    adminId: actor.id,
+    ipAddress: (req.socket?.remoteAddress ?? '').replace('::ffff:', '') || '127.0.0.1',
+    ok: status < 400,
+    status,
+  }
+  ACTIVITY.unshift(entry)
+  if (ACTIVITY.length > ACTIVITY_MAX) ACTIVITY.length = ACTIVITY_MAX
+  return entry
 }
 
 /** The category list, derived from the catalogue. One source, used by the admin
@@ -1757,6 +1825,20 @@ const server = createServer({
       // payment-method list before sign-in, which is why they are named "public".
       const isPublicAdminRead = pathname.startsWith('/api/admin/public/')
       if (!isPublicAdminRead && !requireAdmin(req, res)) return
+
+      // Record the request once its status is known. Wrapping `end` is the only point
+      // that sees EVERY admin route — there are over a hundred handlers below, and
+      // instrumenting each would be a maintenance trap that rots on the next addition.
+      if (!isPublicAdminRead) {
+        const originalEnd = res.end.bind(res)
+        res.end = (...args) => {
+          if (!res.__activityRecorded) {
+            res.__activityRecorded = true
+            recordActivity(req, pathname, res.statusCode)
+          }
+          return originalEnd(...args)
+        }
+      }
 
       // --- derived admin data ----------------------------------------------
       // No /api/admin/* response was ever observable: the live site refuses a
@@ -3711,6 +3793,181 @@ const server = createServer({
           products: stockLevelRows(),
           batchAware: true,
           __derived: 'catalogue stock and per-batch counts',
+        })
+        return
+      }
+
+      /**
+       * The activity log and its filter facets.
+       *
+       * `resources` and `actors` are LOOKUP MAPS the row cells read by id — the resource
+       * cell resolves `resources[log.resourceId]` to get a label and a link target, and
+       * the actor cell resolves `actors[log.actorId]`. Serving the logs without those maps
+       * renders rows whose labels are blank rather than throwing, which is the harder
+       * kind of breakage to notice.
+       */
+      if (pathname === '/api/admin/activity-logs' && req.method === 'GET') {
+        const q = new URL(req.url ?? '/', 'http://x').searchParams
+        const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : d)
+        const limit = Math.min(num(q.get('limit'), 25), 200)
+        const page = num(q.get('page'), 1)
+
+        const type = q.get('resourceType')
+        const action = q.get('action')
+        const adminId = q.get('adminId')
+        const startDate = q.get('startDate')
+        const endDate = q.get('endDate')
+        const anyId = (q.get('anyId') ?? '').trim().toLowerCase()
+
+        const filtered = ACTIVITY.filter((e) => {
+          if (type && type !== 'all' && e.resourceType !== type) return false
+          if (action && action !== 'all' && e.action !== action) return false
+          if (adminId && adminId !== 'all' && e.adminId !== adminId) return false
+          if (startDate && e.timestamp < startDate) return false
+          if (endDate && e.timestamp > endDate) return false
+          if (anyId && !`${e.resourceId ?? ''} ${e.id} ${e.action}`.toLowerCase().includes(anyId)) return false
+          return true
+        })
+
+        const start = (page - 1) * limit
+        const slice = filtered.slice(start, start + limit)
+        const pages = Math.max(1, Math.ceil(filtered.length / limit))
+
+        const actors = {}
+        const resources = {}
+        for (const e of ACTIVITY) {
+          actors[e.adminId] = activityActor()
+          if (e.resourceId) {
+            resources[e.resourceId] = {
+              id: e.resourceId,
+              type: e.resourceType,
+              label: e.resourceId,
+            }
+          }
+        }
+
+        console.log(`  [admin] activity-logs -> ${slice.length}/${filtered.length} (${ACTIVITY.length} recorded)`)
+        sendJson(res, 200, {
+          logs: slice,
+          total: filtered.length,
+          pages,
+          page,
+          limit,
+          actors,
+          resources,
+          __derived: `recorded from this process's own admin requests (${ACTIVITY.length} so far)`,
+        })
+        return
+      }
+
+      // The filter dropdowns. Derived from what has actually been recorded, so the
+      // options can never offer a filter that would return nothing.
+      if (pathname === '/api/admin/activity-logs/facets' && req.method === 'GET') {
+        sendJson(res, 200, {
+          resourceTypes: [...new Set(ACTIVITY.map((e) => e.resourceType))].sort(),
+          actions: [...new Set(ACTIVITY.map((e) => e.action))].sort(),
+          admins: [{ id: activityActor().id, name: activityActor().name }],
+          __derived: 'derived from the recorded log',
+        })
+        return
+      }
+
+      /**
+       * ShipStation carriers and the shipping allowlist.
+       *
+       * There is no ShipStation account here, so there are no real carriers. What the page
+       * needs is a LIST — the settings screen renders selectable carrier rows — and an empty
+       * object left that section with nothing to select. These are the carriers the
+       * storefront's own shipping options already name, so the vocabulary matches the rest
+       * of the app rather than being invented here, and `configured: false` says plainly
+       * that nothing is connected.
+       */
+      if (pathname === '/api/admin/shipstation/carriers' && req.method === 'GET') {
+        sendJson(res, 200, {
+          carriers: SHIPSTATION_CARRIERS,
+          configured: false,
+          __notConnected: 'No ShipStation account is linked in this replay.',
+        })
+        return
+      }
+      if (pathname === '/api/admin/shipstation/allowlist' && req.method === 'GET') {
+        sendJson(res, 200, {
+          serviceCodes: SHIPSTATION_SERVICE_CODES,
+          packageTypes: SHIPSTATION_PACKAGE_TYPES,
+          configured: false,
+          __notConnected: 'No ShipStation account is linked in this replay.',
+        })
+        return
+      }
+
+      /**
+       * System health.
+       *
+       * The previous value was a hardcoded `{ok: true, database: 'ok', storage: 'ok'}` —
+       * a health check that checked nothing and reported success. That is worse than an
+       * empty object: an empty object looks broken, whereas `ok: true` looks fine and
+       * tells you nothing.
+       *
+       * `ok` is now a REAL check of the only two things this server actually depends on:
+       * that its data directory is readable and writable. The rest is reported as what it
+       * is — there is no external database, no mail server, no payment provider and no
+       * ShipStation here, so those say `configured: false` rather than implying a
+       * connection that does not exist.
+       */
+      if (pathname === '/api/admin/system/health' && req.method === 'GET') {
+        const probe = (dir) => {
+          try { accessSync(dir, constants.R_OK | constants.W_OK); return 'ok' } catch { return 'unwritable' }
+        }
+        const dataDir = probe(HERE)
+        const uploadsDir = probe(join(HERE, 'community', 'uploads'))
+        const writable = dataDir === 'ok' && uploadsDir === 'ok'
+        const inTransit = allOrders().filter((o) =>
+          ['SHIPPED', 'PAYMENT_CONFIRMED', 'PROCESSING'].includes(o.status)).length
+        sendJson(res, 200, {
+          // A real boolean from a real check.
+          ok: writable,
+          configured: writable,
+          // There is no external database — persistence is JSON files in `dataDir`.
+          database: dataDir,
+          storage: uploadsDir,
+          version: 'local-replay',
+          // Groups are read WITHOUT optional chaining by the activity page, so they must
+          // be present. Each states the truth: nothing here is connected to anything.
+          shipstation: { configured: false, fromAddress: null },
+          webhook: { lastEventAt: null, inTransit },
+          trackingJob: { running: false, lastStartedAt: null },
+          email: { configured: false },
+          payments: { configured: false },
+          __derived: writable
+            ? 'data directory is readable and writable; no external services configured'
+            : 'data directory is NOT writable — writes will be lost',
+        })
+        return
+      }
+
+      /**
+       * Demand — the activity page reads `data.stats`, and `stats.inTransit` in particular.
+       * The previous stub carried `inTransit: 0`, which reads as "nothing is in transit"
+       * rather than "nothing was counted".
+       */
+      if (pathname === '/api/admin/demand' && req.method === 'GET') {
+        const outstanding = allOrders().filter((o) =>
+          ['SHIPPED', 'PAYMENT_CONFIRMED', 'PROCESSING'].includes(o.status))
+        const lastEvent = outstanding
+          .map((o) => o.placedAt)
+          .filter((x) => typeof x === 'string')
+          .sort()
+          .pop() ?? null
+        sendJson(res, 200, {
+          stats: { inTransit: outstanding.length, lastEventAt: lastEvent },
+          rows: outstanding.map((o) => ({
+            id: o.id,
+            orderNumber: o.orderNumber ?? o.number ?? null,
+            status: o.status,
+            placedAt: o.placedAt ?? null,
+          })),
+          items: [],
+          __derived: 'orders not yet delivered',
         })
         return
       }

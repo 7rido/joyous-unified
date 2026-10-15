@@ -234,3 +234,40 @@ export const SETTLEMENT_WALLETS = [
   { label: 'USDC on Ethereum or Base', address: '0xB151082B952f327b283957A8aB450850942Cbf61' },
   { label: 'PYUSD on Solana', address: '8UveHNP2PcmrfnB6ECPXzT5MMgh9aLiksPj9KiGctkJz' },
 ]
+
+
+/**
+ * ShipStation carriers, service codes and package types.
+ *
+ * NO SHIPSTATION ACCOUNT IS LINKED HERE, so this is not a list read back from one. It is
+ * the vocabulary THE APP ITSELF ALREADY USES: the carrier names appear throughout the
+ * compiled bundles (USPS, UPS, FedEx, DHL), and the service codes mirror the shipping
+ * options the recorded storefront settings expose — standard, international, second-day
+ * and overnight, with the same names the rest of the app shows for them.
+ *
+ * The settings page renders these as selectable rows, so an empty object left the section
+ * with nothing to choose. Every response carrying them also sets `configured: false`, so
+ * nothing implies a connection that does not exist.
+ */
+export const SHIPSTATION_CARRIERS = [
+  { code: 'usps', name: 'USPS', nickname: 'USPS', domestic: true, international: false, active: true },
+  { code: 'ups', name: 'UPS', nickname: 'UPS', domestic: true, international: true, active: true },
+  { code: 'fedex', name: 'FedEx', nickname: 'FedEx', domestic: true, international: true, active: true },
+  { code: 'dhl', name: 'DHL', nickname: 'DHL', domestic: false, international: true, active: true },
+]
+
+/** Names match the storefront's own shipping tiers. */
+export const SHIPSTATION_SERVICE_CODES = [
+  { code: 'usps_ground_advantage', name: 'USPS Ground Advantage', carrier: 'usps' },
+  { code: 'ups_ground', name: 'UPS Ground', carrier: 'ups' },
+  { code: 'fedex_2day', name: 'FedEx 2Day', carrier: 'fedex' },
+  { code: 'fedex_overnight', name: 'FedEx Standard Overnight', carrier: 'fedex' },
+  { code: 'dhl_express_worldwide', name: 'DHL Express Worldwide', carrier: 'dhl' },
+]
+
+export const SHIPSTATION_PACKAGE_TYPES = [
+  { code: 'package', name: 'Package' },
+  { code: 'flat_rate_envelope', name: 'Flat Rate Envelope' },
+  { code: 'small_flat_rate_box', name: 'Small Flat Rate Box' },
+  { code: 'large_flat_rate_box', name: 'Large Flat Rate Box' },
+]
