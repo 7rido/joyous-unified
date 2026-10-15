@@ -62,8 +62,9 @@ DELETE), `reactions`, `polls/:id/vote`, `polls/:id/close`, `events` (POST),
 Moderation: `mod/members` (with `?search=`), `mod/rooms`, `mod/discord-bot`,
 `mod/discord-login`, `mod/connections` (GET, POST, PATCH, DELETE), `auth/discord/unlink`.
 
-Still refusing: `calendar`, `mod/reports`, `connections`, `gifs` → 501. Note
-`mod/reports` is the **first tab of `/mod`**, so its refusal shows as an error line there.
+Moderation queue: `mod/reports` (GET with `?status=`, POST `:id` to resolve or dismiss).
+
+Still refusing: `calendar`, `connections`, `gifs` → 501.
 
 `mod/connections/:id/test`, `auth/discord/start`, `live/*` → 503 simulated: they need an
 actual Discord or LiveKit connection. Discord and connection *settings* are real and

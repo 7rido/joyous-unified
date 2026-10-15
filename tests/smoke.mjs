@@ -1749,6 +1749,53 @@ check("a MEMBER cannot delete another member's post",
   (await del(`/api/community/posts/post-1`, memberJar)).status === 400, 'cross-owner delete')
 if (chenPost.body?.post?.id) await del(`/api/community/posts/${chenPost.body.post.id}`, memberJar)
 
+// --- the moderation queue (was a visible 501 on the first /mod tab) ------
+// A member files a report, a moderator reads it. The page dereferences
+// `a.reporter.displayName` and `a.target.author.displayName` with NO optional chaining,
+// so the SHAPE of these objects matters as much as the status code.
+const filed = await post('/api/community/reports',
+  { postId: 'post-1', reason: 'smoke report for the queue' }, memberJar)
+check('a member can file a report', filed.status === 201, `status=${filed.status}`)
+
+const queue = await get('/api/community/mod/reports?status=OPEN', jar)
+check('/mod/reports returns {reports:[...]}, not a bare array',
+  Array.isArray(queue.body?.reports), `keys: ${Object.keys(queue.body || {}).join(', ')}`)
+const entry = (queue.body?.reports ?? []).find((r) => r.reason === 'smoke report for the queue')
+check('a queued report carries a reporter OBJECT with a displayName',
+  typeof entry?.reporter?.displayName === 'string', JSON.stringify(entry?.reporter))
+check('a queued report carries a target with kind, excerpt and deleted',
+  !!entry?.target && typeof entry.target.kind === 'string'
+    && typeof entry.target.excerpt === 'string' && entry.target.deleted === false,
+  JSON.stringify(entry?.target)?.slice(0, 90))
+
+if (entry?.id) {
+  const resolved = await post(`/api/community/mod/reports/${entry.id}`, { status: 'RESOLVED' }, jar)
+  check('a moderator can resolve a report', resolved.status === 200
+    && resolved.body?.report?.status === 'RESOLVED', `status=${resolved.status}`)
+  // The chips must partition, or a handled report stays in the OPEN list forever.
+  const openNow = await get('/api/community/mod/reports?status=OPEN', jar)
+  check('a resolved report leaves the OPEN queue',
+    !(openNow.body?.reports ?? []).some((r) => r.id === entry.id), 'still open')
+  const resNow = await get('/api/community/mod/reports?status=RESOLVED', jar)
+  check('and appears under RESOLVED',
+    (resNow.body?.reports ?? []).some((r) => r.id === entry.id), 'not under RESOLVED')
+  check('an unknown status is refused rather than stored',
+    (await post(`/api/community/mod/reports/${entry.id}`, { status: 'WAT' }, jar)).status === 400,
+    'bogus status')
+  check('an unknown report id is a 400, not a silent success',
+    (await post('/api/community/mod/reports/report-nope', { status: 'RESOLVED' }, jar)).status === 400,
+    'unknown id')
+  // Clean up so repeated runs do not accumulate a queue.
+  await post(`/api/community/mod/reports/${entry.id}`, { status: 'DISMISSED' }, jar)
+}
+
+// The queue is moderation-only. This is the same class of bug as the Discord settings:
+// a role check that silently passed for everyone.
+check('an anonymous request cannot read the moderation queue',
+  (await get('/api/community/mod/reports')).status === 403, 'anonymous')
+check('a MEMBER cannot read the moderation queue',
+  (await get('/api/community/mod/reports', memberJar)).status === 403, 'member')
+
 // LiveKit and Discord are real external services. Refusing loudly beats a fake success.
 const live = await get('/api/community/live')
 check('LiveKit-dependent endpoints refuse rather than fake success',

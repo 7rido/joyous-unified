@@ -39,7 +39,8 @@ import {
   listPosts, getPost, commentsOf, createPost, patchPost, deletePost,
   addComment, patchComment, deleteComment, toggleReaction, votePoll, closePoll,
   listEvents, rsvp, createEvent, markRead, markNotificationsRead, listNotifications,
-  fileReport, unreadState, unreadCount, overview, ME, stats, setActor,
+  fileReport, listReports, setReportStatus, unreadState, unreadCount, overview,
+  ME, stats, setActor,
   getDiscord, setBotToken, clearBotToken, setDiscordLogin, unlinkDiscord,
   listConnections, createConnection, updateConnection, deleteConnection,
   modMembers, modRooms,
@@ -471,6 +472,25 @@ export async function handleCommunityApi(req, res, pathname) {
   if (route === '/mod/rooms' && req.method === 'GET') {
     if (!isAdmin) { json(res, 403, { error: 'Admins manage rooms.' }); return true }
     json(res, 200, { ...modRooms(), __fixture: true })
+    return true
+  }
+
+  // The moderation queue. `status` is the chip filter (OPEN/RESOLVED/DISMISSED); the page
+  // re-reads the list after acting rather than patching state, so this must reflect the
+  // change immediately.
+  if (route === '/mod/reports' && req.method === 'GET') {
+    if (!isStaff) { json(res, 403, { error: 'Moderators only.' }); return true }
+    const status = new URL(req.url ?? '/', 'http://x').searchParams.get('status') ?? 'OPEN'
+    json(res, 200, { ...listReports(status), __fixture: true })
+    return true
+  }
+
+  const reportMatch = new RegExp('^/mod/reports/([^/]+)$').exec(route)
+  if (reportMatch && req.method === 'POST') {
+    if (!isStaff) { json(res, 403, { error: 'Moderators only.' }); return true }
+    const out = setReportStatus(decodeURIComponent(reportMatch[1]), (await readBody(req)).status)
+    if (out.error) { json(res, 400, out); return true }
+    json(res, 200, out)
     return true
   }
 

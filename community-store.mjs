@@ -563,14 +563,92 @@ export function fileReport(body) {
     id: nextId('report'),
     postId: isStr(body.postId) ? body.postId : null,
     commentId: isStr(body.commentId) ? body.commentId : null,
-    reason, reporterId: actor.id, status: 'OPEN', createdAt: iso(), __fixture: true,
+    reason, reporterId: actor.id, reporterName: actor.displayName,
+    status: 'OPEN', createdAt: iso(), __fixture: true,
   }
   state.reports.push(report)
   persist()
   return { message: 'Thanks — a moderator will take a look.', report }
 }
 
-export const listReports = () => state.reports
+/**
+ * The moderation queue.
+ *
+ * Reports are STORED flat (`postId`, `commentId`, `reporterId`) and RESHAPED here into what
+ * the page reads: `reporter` as a member object, and `target` as `{kind, author, postId,
+ * title, excerpt, deleted}`. The client dereferences `a.target.author.displayName` and
+ * `a.target.kind` without optional chaining, so a report whose target has been deleted
+ * still needs a target object — hence `deleted: true` rather than a missing field.
+ */
+export function listReports(status = 'OPEN') {
+  const want = ['OPEN', 'RESOLVED', 'DISMISSED'].includes(status) ? status : 'OPEN'
+  const reports = state.reports
+    .filter((r) => (r.status ?? 'OPEN') === want)
+    // The page renders `a.reporter.displayName` with NO optional chaining, so a report
+    // whose reporter cannot be resolved would take the whole tab to the error boundary.
+    // Dropping it is the lesser failure — and it can only happen if the members seed
+    // changed under an existing queue.
+    .filter((r) => {
+      if (MEMBERS.some((m) => m.id === r.reporterId)) return true
+      console.log(`  [community] hiding report ${r.id}: reporter ${r.reporterId} is unknown`)
+      return false
+    })
+    .map((r) => {
+      const reporter = MEMBERS.find((m) => m.id === r.reporterId) ?? null
+      const post = r.postId ? state.posts.find((x) => x.id === r.postId) : null
+      const comment = r.commentId
+        ? Object.values(state.comments).flat().find((c) => c.id === r.commentId)
+        : null
+
+      let target
+      if (comment) {
+        const owner = state.posts.find((x) => x.id === comment.postId)
+        target = {
+          kind: 'comment', postId: comment.postId, commentId: comment.id,
+          title: owner?.title ?? null,
+          excerpt: String(comment.body ?? '').slice(0, 180),
+          author: comment.author ?? null, deleted: false,
+        }
+      } else if (post) {
+        target = {
+          kind: 'post', postId: post.id, commentId: null,
+          title: post.title, excerpt: String(post.body ?? '').slice(0, 180),
+          author: post.author ?? null, deleted: false,
+        }
+      } else {
+        // The target is gone. The page still renders the card, so keep a well-formed
+        // object rather than nulling it — `deleted` is what drives the "(already deleted)"
+        // label.
+        target = {
+          kind: 'post', postId: r.postId ?? null, commentId: r.commentId ?? null,
+          title: null, excerpt: '(the reported content no longer exists)',
+          author: null, deleted: true,
+        }
+      }
+
+      return {
+        id: r.id, reason: r.reason, status: r.status ?? 'OPEN',
+        createdAt: r.createdAt, reporter, target,
+      }
+    })
+  return { reports }
+}
+
+export function setReportStatus(id, status) {
+  if (!['OPEN', 'RESOLVED', 'DISMISSED'].includes(status)) {
+    return { error: 'Unknown status.' }
+  }
+  const r = state.reports.find((x) => x.id === id)
+  if (!r) return { error: 'That report no longer exists.' }
+  r.status = status
+  r.handledAt = iso()
+  r.handledBy = actor.id
+  persist()
+  return { report: { id: r.id, status: r.status, handledAt: r.handledAt } }
+}
+
+/** Kept for the smoke suite, which reads the raw queue rather than the reshaped view. */
+export const rawReports = () => state.reports
 
 /* --------------------------------------------------------------- discord --- */
 /**

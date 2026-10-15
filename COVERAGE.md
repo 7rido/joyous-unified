@@ -66,10 +66,10 @@ configured" from "this endpoint is broken", so the page's own honest copy —
 
 Two things sit **outside** this numbering and are not stage work:
 
-- **Four unbuilt community reads** — `/calendar`, `/mod/reports`, `/connections`, `/gifs`.
-  `/calendar` is a nav item with a real screen behind it, and **`/mod/reports` is the
-  first tab of `/mod`**, so its refusal currently renders as a raw error line at the top of
-  that page. Both are visible defects rather than hidden gaps.
+- **Three unbuilt community reads** — `/calendar`, `/connections`, `/gifs`. `/calendar` is
+  a nav item with a real screen behind it, so its refusal is a visible defect rather than a
+  hidden gap. `/mod/reports` was the worst of these — it is the first tab of `/mod`, so its
+  `501` showed as a raw error line on a page an admin opens — and is now implemented.
 - **The `/sso` handoff**, wired at both ends but never exercised. The member app POSTs
   `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
   exchanges it at `/auth/handoff`. All three pieces exist locally.
@@ -115,7 +115,7 @@ the cheapest remaining work on the admin side.
 ### Community: 501 rather than 200
 
 ```
-/calendar  /mod/reports  /connections  /gifs      -> 501 __notImplemented
+/calendar  /connections  /gifs                    -> 501 __notImplemented
 /live, /live/*  auth/discord/*  mod/discord*      -> 503 __simulated
 ```
 
@@ -187,9 +187,9 @@ graph is one-way.
 
 ## Open items, cheapest first
 
-1. **Community's four unimplemented reads** — `/calendar`, `/mod/reports`, `/connections`,
-   `/gifs`. `/mod/reports` is the visible one: it is the first tab of `/mod` and its
-   refusal renders as an error line there. Outside the stage numbering.
+1. **Community's three remaining reads** — `/calendar`, `/connections`, `/gifs`.
+   `/mod/reports` is done (the moderation queue), so all four `/mod` tabs now work.
+   `/calendar` is the visible one left: a nav item with a real screen behind it.
 2. **The `/sso` handoff, end to end.** Wired but never exercised: the member app POSTs
    `/api/community-handoff`, redirects to `<community>/sso#code=…`, and the client
    exchanges it at `/api/community/auth/handoff`. Both ends exist locally.
